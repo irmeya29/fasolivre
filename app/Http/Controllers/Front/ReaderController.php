@@ -8,44 +8,42 @@ use Illuminate\Http\Request;
 
 class ReaderController extends Controller
 {
+    /**
+     * Affiche le lecteur PDF du livre.
+     */
     public function read($slug)
     {
+        // Charger le livre
         $book = Book::where('slug', $slug)->firstOrFail();
-        $user = auth()->user();
 
-        // Vérifier si l'utilisateur a le livre
-        $pivot = $user->books()->where('book_id', $book->id)->first();
-
-        // ------------------------------------------
-        // 1️⃣ Si pas dans la bibliothèque :
-        // ------------------------------------------
-        if (!$pivot) {
-
-            // 👉 Autoriser AUTO si livre gratuit
-            if ($book->access_type === 'free') {
-
-                $user->books()->attach($book->id, [
-                    'progress' => 0,
-                    'is_favorite' => false
-                ]);
-
-                $pivot = $user->books()->where('book_id', $book->id)->first();
-            }
-            else {
-                return redirect()
-                    ->route('books.show', $book->slug)
-                    ->with('error', "Vous n’avez pas accès à ce livre.");
-            }
+        // Vérifier que l’utilisateur a accès à ce livre
+        if (!auth()->user()->books->contains($book->id)) {
+            return redirect()->route('books.show', $book->slug)
+                ->with('error', "Vous n’avez pas accès à ce livre.");
         }
 
-        // ------------------------------------------
-        // 2️⃣ Récupérer progression
-        // ------------------------------------------
-        $progress = $pivot->pivot->progress ?? 0;
+        // Récupérer la relation pivot (progression)
+        $userBook = auth()->user()->books()
+            ->where('book_id', $book->id)
+            ->first();
 
+        // Si pour une raison quelconque le pivot n’existe pas encore → on le crée
+        if (!$userBook) {
+            auth()->user()->books()->attach($book->id, [
+                'progress' => 0,
+                'is_favorite' => 0,
+            ]);
+
+            $progress = 0;
+        } else {
+            $progress = $userBook->pivot->progress ?? 0;
+        }
+
+        // Retourne la vue du lecteur PDF
         return view('front.read.pdf', [
-            'book'     => $book,
-            'progress' => $progress
+            'book'      => $book,
+            'progress'  => $progress,
+            'updateUrl' => route('progress.update', $book->id),
         ]);
     }
 }

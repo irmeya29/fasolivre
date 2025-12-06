@@ -74,21 +74,21 @@ Route::get('/search/ajax', [SearchController::class, 'ajax'])->name('search.ajax
 */
 Route::middleware('auth')->group(function () {
 
-    // Lecteur PDF / Audio
+    // 👉 Lecteur PDF
     Route::get('/read/{slug}', [ReaderController::class, 'read'])
         ->name('read.book');
 
-    // Sauvegarder progression (PDF Reader auto-save)
-    Route::post('/read/{book}/progress', [ReaderController::class, 'saveProgress'])
-        ->name('read.saveProgress');
+    // 👉 Mettre à jour la progression (100% PRO !!!)
+    Route::post('/book/{book}/progress', [BookInteractionController::class, 'updateProgress'])
+        ->name('progress.update');
 
-    // Favoris
-    Route::post('/book/{book}/favorite', [BookInteractionController::class, 'toggleFavorite'])
-        ->name('favorite.toggle');
-
-    // Récupérer progression
+    // 👉 Récupérer la progression (pour initialiser le lecteur)
     Route::get('/book/{book}/progress', [BookInteractionController::class, 'getProgress'])
         ->name('progress.get');
+
+    // 👉 Gérer favoris
+    Route::post('/book/{book}/favorite', [BookInteractionController::class, 'toggleFavorite'])
+        ->name('favorite.toggle');
 });
 
 
@@ -105,15 +105,13 @@ Route::middleware('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| 👤 USER ACCOUNT (Privé)
+| 👤 USER ACCOUNT
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth'])->prefix('account')->name('account.')->group(function () {
+Route::middleware('auth')->prefix('account')->name('account.')->group(function () {
 
     Route::get('/', fn() => view('front.account.index'))->name('index');
     Route::get('/books', fn() => view('front.account.books'))->name('books');
-
-    // ⚠️ settings supprimé → gestion dans /profile (Breeze)
 });
 
 
@@ -122,7 +120,7 @@ Route::middleware(['auth'])->prefix('account')->name('account.')->group(function
 | 🔐 PROFILE (Breeze)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth'])->group(function () {
+Route::middleware('auth')->group(function () {
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
@@ -138,18 +136,18 @@ Route::middleware(['auth'])->group(function () {
 */
 Route::prefix('admin')->name('admin.')->group(function () {
 
-    /* LOGIN ADMIN */
+    // LOGIN ADMIN
     Route::middleware('guest:admin')->group(function () {
         Route::get('/login', [AdminAuthController::class, 'showLoginForm'])->name('login');
         Route::post('/login', [AdminAuthController::class, 'login'])->name('login.submit');
     });
 
-    /* LOGOUT ADMIN */
+    // LOGOUT
     Route::post('/logout', [AdminAuthController::class, 'logout'])
         ->middleware('auth:admin')
         ->name('logout');
 
-    /* ADMIN PROTECTED AREA */
+    // ZONE ADMIN PROTÉGÉE
     Route::middleware('auth:admin')->group(function () {
 
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -166,7 +164,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| AUTH SCAFFOLDING (Breeze)
+| AUTH (Breeze)
 |--------------------------------------------------------------------------
 */
 require __DIR__.'/auth.php';
