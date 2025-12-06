@@ -4,33 +4,70 @@
 
 @section('content')
 
-<div class="max-w-7xl mx-auto px-4 py-10">
+<style>
+    :root {
+        --faso-orange: #E0551B;
+        --faso-green: #079C25;
+        --faso-gold: #DCAE81;
+    }
 
-    <h1 class="text-2xl font-semibold text-slate-900 mb-8 flex items-center gap-2">
-        <i data-lucide="grid" class="w-6 h-6 text-indigo-600"></i>
-        Catégories
-    </h1>
+    .glass-card {
+        background: rgba(255, 255, 255, 0.65);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        transition: 0.3s ease;
+    }
+
+    .glass-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+    }
+</style>
+
+<div class="max-w-7xl mx-auto px-4 py-12">
+
+    {{-- HEADER --}}
+    <div class="flex items-center justify-between mb-10">
+        <h1 class="text-3xl font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="grid" class="w-7 h-7 text-[var(--faso-orange)]"></i>
+            Explorer les catégories
+        </h1>
+    </div>
+
 
     {{-- GRID --}}
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-8">
+
         @foreach($categories as $category)
             <a href="{{ route('categories.show', $category->slug) }}"
-               class="bg-white p-5 rounded-xl shadow hover:shadow-lg transition text-center">
+               class="glass-card p-6 rounded-2xl text-center relative overflow-hidden">
 
-                <div class="w-12 h-12 mx-auto bg-indigo-100 rounded-xl flex items-center justify-center">
-                    <i data-lucide="folder" class="w-6 h-6 text-indigo-600"></i>
+                {{-- Halo --}}
+                <div class="absolute -top-6 -right-6 w-20 h-20 bg-[var(--faso-orange)]/20 blur-2xl rounded-full"></div>
+
+                {{-- Icon --}}
+                <div class="w-14 h-14 mx-auto bg-[var(--faso-orange)]/10 rounded-2xl flex items-center justify-center">
+                    <i data-lucide="folder" class="w-6 h-6 text-[var(--faso-orange)]"></i>
                 </div>
 
-                <h3 class="mt-4 font-semibold text-slate-900">{{ $category->name }}</h3>
+                {{-- Category Name --}}
+                <h3 class="mt-4 font-semibold text-slate-900 text-base truncate">
+                    {{ $category->name }}
+                </h3>
+
+                {{-- Count --}}
                 <p class="text-xs text-slate-500 mt-1">
                     {{ $category->books()->count() }} livres
                 </p>
+
             </a>
         @endforeach
+
     </div>
 
-    {{-- Pagination --}}
-    <div class="mt-10">
+    {{-- PAGINATION --}}
+    <div class="mt-12">
         {{ $categories->links('pagination::tailwind') }}
     </div>
 

@@ -16,6 +16,11 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(): View
     {
+        // Si l’utilisateur est déjà connecté → on le renvoie au tableau de bord
+        if (Auth::check()) {
+            return redirect()->route('account.index');
+        }
+
         return view('auth.login');
     }
 
@@ -28,7 +33,9 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        // 🔥 Correction : redirection vers l'espace utilisateur
+        // Redirection intelligente :
+        // - si l'utilisateur venait d'une page protégée, on y retourne (intended)
+        // - sinon on va au tableau de bord Fasolivre
         return redirect()->intended(route('account.index'));
     }
 
@@ -42,6 +49,7 @@ class AuthenticatedSessionController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
+        // Redirection propre après logout
         return redirect('/');
     }
 }

@@ -4,140 +4,174 @@
 
 @section('content')
 
-<div class="max-w-7xl mx-auto px-4 py-10">
+<style>
+    :root {
+        --faso-orange: #E0551B;
+        --faso-green: #079C25;
+    }
+
+    .glass {
+        background: rgba(255, 255, 255, 0.65);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+    }
+
+    .search-card:hover img {
+        transform: scale(1.06);
+    }
+
+    .suggest-item:hover {
+        background: #f8f8f8;
+    }
+</style>
+
+<div class="max-w-7xl mx-auto px-4 py-12">
 
     {{-- HEADER --}}
-    <h1 class="text-2xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
-        <i data-lucide="search" class="w-6 h-6 text-indigo-600"></i>
-        Recherche
+    <h1 class="text-3xl font-bold text-slate-900 mb-10 flex items-center gap-2">
+        <i data-lucide="search" class="w-7 h-7 text-[var(--faso-orange)]"></i>
+        Résultats de recherche
     </h1>
 
-    {{-- FORM + SEARCH LIVE --}}
-    <div class="relative mb-10">
 
-        <form action="{{ route('search') }}" method="GET" class="flex flex-col lg:flex-row items-start lg:items-center gap-4">
+    {{-- SEARCH BAR + FILTERS --}}
+    <div class="glass p-6 rounded-3xl shadow-lg border border-white/40 mb-12">
 
-            {{-- Input --}}
-            <div class="relative w-full">
+        {{-- FORM --}}
+        <form action="{{ route('search') }}" method="GET" class="space-y-6">
+
+            {{-- Search Input --}}
+            <div class="relative">
+
                 <input type="text"
                        name="q"
-                       value="{{ $q }}"
                        id="searchInput"
-                       placeholder="Rechercher un titre, mot clé ou auteur…"
-                       class="w-full px-4 py-3 border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500">
+                       value="{{ $q }}"
+                       placeholder="Rechercher un livre, un auteur, une catégorie..."
+                       class="w-full px-5 py-3.5 rounded-2xl border border-slate-200 text-sm focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent">
 
-                {{-- Suggestions AJAX --}}
+                <i data-lucide="search"
+                   class="w-5 h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2"></i>
+
+                {{-- LIVE SUGGESTIONS --}}
                 <div id="searchSuggestions"
-                     class="absolute top-full left-0 w-full bg-white border rounded-xl shadow-lg hidden z-40"></div>
+                     class="absolute top-full left-0 w-full bg-white rounded-2xl border border-slate-200 shadow-xl hidden z-30 overflow-hidden"></div>
             </div>
 
-            {{-- BUTTON --}}
-            <button class="px-5 py-3 bg-indigo-600 text-white rounded-xl text-sm flex items-center gap-2">
-                <i data-lucide="search"></i> Rechercher
-            </button>
+
+            {{-- FILTERS --}}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                <select name="category" class="px-4 py-3 border rounded-xl text-sm" onchange="this.form.submit()">
+                    <option value="">Toutes les catégories</option>
+                    @foreach($categories as $cat)
+                        <option value="{{ $cat->id }}" @selected(request('category')==$cat->id)>
+                            {{ $cat->name }}
+                        </option>
+                    @endforeach
+                </select>
+
+                <select name="access" class="px-4 py-3 border rounded-xl text-sm" onchange="this.form.submit()">
+                    <option value="">Type d'accès</option>
+                    <option value="free" @selected(request('access')=='free')>Gratuit</option>
+                    <option value="paid" @selected(request('access')=='paid')>Payant</option>
+                    <option value="subscription" @selected(request('access')=='subscription')>Abonnement</option>
+                </select>
+
+                <select name="format" class="px-4 py-3 border rounded-xl text-sm" onchange="this.form.submit()">
+                    <option value="">Format</option>
+                    <option value="pdf" @selected(request('format')=='pdf')>PDF</option>
+                    <option value="audio" @selected(request('format')=='audio')>Audio</option>
+                    <option value="pdf_audio" @selected(request('format')=='pdf_audio')>PDF + Audio</option>
+                </select>
+
+                <select name="sort" class="px-4 py-3 border rounded-xl text-sm" onchange="this.form.submit()">
+                    <option value="recent" @selected(request('sort')=='recent')>Les plus récents</option>
+                    <option value="oldest" @selected(request('sort')=='oldest')>Les plus anciens</option>
+                    <option value="price_asc" @selected(request('sort')=='price_asc')>Prix croissant</option>
+                    <option value="price_desc" @selected(request('sort')=='price_desc')>Prix décroissant</option>
+                </select>
+
+            </div>
+
         </form>
-
-
-        {{-- FILTERS --}}
-        <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
-            {{-- Catégorie --}}
-            <select name="category" onchange="this.form.submit()"
-                class="px-4 py-3 border rounded-xl text-sm">
-                <option value="">Toutes les catégories</option>
-                @foreach($categories as $cat)
-                    <option value="{{ $cat->id }}" @selected(request('category') == $cat->id)>
-                        {{ $cat->name }}
-                    </option>
-                @endforeach
-            </select>
-
-            {{-- Type d’accès --}}
-            <select name="access" onchange="this.form.submit()"
-                class="px-4 py-3 border rounded-xl text-sm">
-                <option value="">Accès (tous)</option>
-                <option value="free" @selected(request('access')=='free')>Gratuit</option>
-                <option value="paid" @selected(request('access')=='paid')>Payant</option>
-                <option value="subscription" @selected(request('access')=='subscription')>Abonnement</option>
-            </select>
-
-            {{-- Format --}}
-            <select name="format" onchange="this.form.submit()"
-                class="px-4 py-3 border rounded-xl text-sm">
-                <option value="">Format (tous)</option>
-                <option value="pdf" @selected(request('format')=='pdf')>PDF</option>
-                <option value="audio" @selected(request('format')=='audio')>Audio</option>
-                <option value="pdf_audio" @selected(request('format')=='pdf_audio')>PDF + Audio</option>
-            </select>
-
-            {{-- Tri --}}
-            <select name="sort" onchange="this.form.submit()"
-                class="px-4 py-3 border rounded-xl text-sm">
-                <option value="recent" @selected(request('sort')=='recent')>Les plus récents</option>
-                <option value="oldest" @selected(request('sort')=='oldest')>Les plus anciens</option>
-                <option value="price_asc" @selected(request('sort')=='price_asc')>Prix croissant</option>
-                <option value="price_desc" @selected(request('sort')=='price_desc')>Prix décroissant</option>
-            </select>
-
-        </div>
 
     </div>
 
 
-    {{-- AUTEURS --}}
+    {{-- ========================
+        AUTEURS
+    ========================= --}}
     @if($authors->count())
-    <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-        <i data-lucide="users" class="w-5 h-5 text-indigo-600"></i>
-        Auteurs trouvés
+    <h2 class="text-xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
+        <i data-lucide="users" class="w-5 h-5 text-[var(--faso-green)]"></i>
+        Auteurs trouvés ({{ $authors->count() }})
     </h2>
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6 mb-10">
-
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-8 mb-12">
         @foreach($authors as $author)
         <a href="{{ route('authors.show', $author->slug) }}"
-           class="bg-white rounded-xl shadow p-4 text-center hover:shadow-lg transition">
+           class="glass rounded-2xl p-5 text-center shadow hover:shadow-xl transition">
 
             <img src="{{ $author->photo ? asset('storage/'.$author->photo) : 'https://ui-avatars.com/api/?name='.urlencode($author->name) }}"
-                 class="w-20 h-20 rounded-full mx-auto object-cover">
+                 class="w-20 h-20 rounded-full mx-auto object-cover shadow">
 
-            <p class="mt-3 text-sm font-semibold">{{ $author->name }}</p>
+            <p class="mt-4 text-sm font-semibold text-slate-900">{{ $author->name }}</p>
         </a>
         @endforeach
     </div>
     @endif
 
 
-    {{-- LIVRES --}}
-    <h2 class="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
-        <i data-lucide="book-open" class="w-5 h-5 text-indigo-600"></i>
-        Livres trouvés
+
+    {{-- ========================
+        LIVRES
+    ========================= --}}
+    <h2 class="text-xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
+        <i data-lucide="book-open" class="w-5 h-5 text-[var(--faso-orange)]"></i>
+        Livres trouvés ({{ $books->total() }})
     </h2>
 
     @if($books->count() == 0)
-        <p class="text-slate-500 text-sm">Aucun livre trouvé.</p>
+        <p class="text-slate-500">Aucun livre trouvé.</p>
     @else
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-8">
         @foreach($books as $book)
         <a href="{{ route('books.show', $book->slug) }}"
-           class="bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden">
+           class="glass rounded-2xl overflow-hidden shadow-lg search-card transition">
 
-            <img src="{{ asset('storage/'.$book->cover) }}"
-                 class="w-full h-56 object-cover">
+            <div class="relative">
+                <img src="{{ asset('storage/'.$book->cover) }}"
+                     class="w-full h-56 object-cover transition duration-300">
 
-            <div class="p-3">
-                <h3 class="font-medium text-sm">{{ Str::limit($book->title, 40) }}</h3>
+                {{-- BADGES --}}
+                @if($book->access_type == 'free')
+                <span class="absolute top-2 left-2 px-2 py-1 text-[10px] bg-green-100 text-[var(--faso-green)] rounded-lg">
+                    GRATUIT
+                </span>
+                @elseif($book->access_type == 'paid')
+                <span class="absolute top-2 left-2 px-2 py-1 text-[10px] bg-orange-100 text-[var(--faso-orange)] rounded-lg">
+                    PAYANT
+                </span>
+                @endif
+            </div>
 
-                <p class="text-xs text-gray-500 flex items-center gap-1">
+            <div class="p-4">
+                <h3 class="font-medium text-sm truncate">{{ $book->title }}</h3>
+                <p class="text-xs text-slate-500 mt-1 truncate flex items-center gap-1">
                     <i data-lucide="user" class="w-3 h-3"></i>
-                    {{ $book->author->name ?? '' }}
+                    {{ $book->author->name ?? 'Auteur inconnu' }}
                 </p>
             </div>
+
         </a>
         @endforeach
     </div>
 
-    <div class="mt-10">
+
+    <div class="mt-12">
         {{ $books->links('pagination::tailwind') }}
     </div>
 
@@ -150,29 +184,36 @@
 
 @section('scripts')
 <script>
-// ---------------------------
-// AJAX LIVE SEARCH
-// ---------------------------
+/* -----------------------------
+   AJAX LIVE SEARCH
+------------------------------ */
 document.getElementById('searchInput').addEventListener('keyup', function () {
+
     let q = this.value.trim();
+    let box = document.getElementById('searchSuggestions');
 
     if (q.length < 2) {
-        document.getElementById('searchSuggestions').classList.add('hidden');
+        box.classList.add('hidden');
         return;
     }
 
     fetch("{{ route('search.ajax') }}?q=" + encodeURIComponent(q))
         .then(res => res.json())
         .then(data => {
-            let box = document.getElementById('searchSuggestions');
 
             if (data.length === 0) {
-                box.innerHTML = '<div class="p-3 text-sm text-gray-500">Aucun résultat</div>';
+                box.innerHTML = '<div class="p-4 text-sm text-slate-500">Aucun résultat</div>';
             } else {
                 box.innerHTML = data.map(book => `
-                    <a href="/books/${book.slug}" class="flex items-center gap-3 p-3 hover:bg-gray-50">
-                        <img src="/storage/${book.cover}" class="w-10 h-14 object-cover rounded">
-                        <span class="text-sm">${book.title}</span>
+                    <a href="/books/${book.slug}"
+                       class="flex items-center gap-3 p-3 border-b last:border-0 suggest-item transition">
+
+                        <img src="/storage/${book.cover}" class="w-10 h-14 rounded object-cover">
+
+                        <div>
+                            <p class="text-sm font-medium text-slate-800">${book.title}</p>
+                            <p class="text-xs text-slate-500">${book.author ?? ''}</p>
+                        </div>
                     </a>
                 `).join('');
             }

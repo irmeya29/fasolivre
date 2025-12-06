@@ -45,6 +45,7 @@ class RegisteredUserController extends Controller
 
         Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        // 🔥 Redirection PRO Fasolivre
+        return redirect()->route('account.index');
     }
 }
