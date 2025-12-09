@@ -1,5 +1,5 @@
 <?php
-
+// app/Models/User.php
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,26 +10,17 @@ class User extends Authenticatable
 {
     use HasFactory, Notifiable;
 
-    /**
-     * Mass assignable attributes.
-     */
     protected $fillable = [
         'name',
         'email',
         'password',
     ];
 
-    /**
-     * Hidden attributes.
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Casts.
-     */
     protected function casts(): array
     {
         return [
@@ -39,33 +30,20 @@ class User extends Authenticatable
     }
 
     /**
-     * -----------------------------------------
-     * RELATION : Livres liés à l'utilisateur
-     * -----------------------------------------
-     * Livre acheté / gratuit / ajouté à la bibliothèque
+     * Livres de la bibliothèque de l'utilisateur.
      */
     public function books()
     {
         return $this->belongsToMany(Book::class, 'book_user')
-                    ->withTimestamps();
+            ->withPivot(['progress', 'is_favorite'])
+            ->withTimestamps();
     }
 
     /**
-     * Optionnel : livres premium achetés uniquement
+     * Livres favoris (via pivot).
      */
-    public function purchasedBooks()
+    public function favoriteBooks()
     {
-        return $this->books()->where('access_type', 'paid');
+        return $this->books()->wherePivot('is_favorite', true);
     }
-
-    public function favorites()
-    {
-    return $this->belongsToMany(Book::class, 'favorites')->withTimestamps();
-    }
-
-    public function readingProgress()
-    {
-    return $this->hasMany(ReadingProgress::class);
-    }
-
 }

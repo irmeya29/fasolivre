@@ -1,20 +1,14 @@
 <?php
-
 use Illuminate\Support\Facades\Route;
 
-// FRONT CONTROLLERS
 use App\Http\Controllers\Front\BookFrontController;
 use App\Http\Controllers\Front\CategoryFrontController;
 use App\Http\Controllers\Front\AuthorFrontController;
 use App\Http\Controllers\Front\SearchController;
 use App\Http\Controllers\Front\SubmissionFrontController;
 use App\Http\Controllers\Front\ReaderController;
-
-// USER FEATURES
 use App\Http\Controllers\BookInteractionController;
 use App\Http\Controllers\ProfileController;
-
-// ADMIN CONTROLLERS
 use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\AuthorController;
@@ -22,112 +16,59 @@ use App\Http\Controllers\Admin\BookController;
 use App\Http\Controllers\Admin\SubmissionController;
 use App\Http\Controllers\Admin\DashboardController;
 
-
-/*
-|--------------------------------------------------------------------------
-| HOME (Public)
-|--------------------------------------------------------------------------
-*/
+/* HOME */
 Route::get('/', fn() => view('front.pages.home'))->name('home');
 
-
-/*
-|--------------------------------------------------------------------------
-| BOOKS (Public)
-|--------------------------------------------------------------------------
-*/
+/* BOOKS */
 Route::get('/books', [BookFrontController::class, 'index'])->name('books.index');
 Route::get('/books/{slug}', [BookFrontController::class, 'show'])->name('books.show');
 
-
-/*
-|--------------------------------------------------------------------------
-| CATEGORIES (Public)
-|--------------------------------------------------------------------------
-*/
+/* CATEGORIES */
 Route::get('/categories', [CategoryFrontController::class, 'index'])->name('categories.index.front');
 Route::get('/categories/{slug}', [CategoryFrontController::class, 'show'])->name('categories.show');
 
-
-/*
-|--------------------------------------------------------------------------
-| AUTHORS (Public)
-|--------------------------------------------------------------------------
-*/
+/* AUTHORS */
 Route::get('/authors', [AuthorFrontController::class, 'index'])->name('authors.index.front');
 Route::get('/authors/{slug}', [AuthorFrontController::class, 'show'])->name('authors.show');
 
-
-/*
-|--------------------------------------------------------------------------
-| 🔍 SEARCH (Public)
-|--------------------------------------------------------------------------
-*/
+/* SEARCH */
 Route::get('/search', [SearchController::class, 'index'])->name('search');
 Route::get('/search/ajax', [SearchController::class, 'ajax'])->name('search.ajax');
 
-
-/*
-|--------------------------------------------------------------------------
-| 📖 LECTURE + PROGRESSION + FAVORIS (Auth)
-|--------------------------------------------------------------------------
-*/
+/* LECTURE + PROGRESSION + FAVORIS (auth) */
 Route::middleware('auth')->group(function () {
 
-    // 👉 Lecteur PDF
     Route::get('/read/{slug}', [ReaderController::class, 'read'])
         ->name('read.book');
 
-    // 👉 Mettre à jour la progression (100% PRO !!!)
     Route::post('/book/{book}/progress', [BookInteractionController::class, 'updateProgress'])
         ->name('progress.update');
 
-    // 👉 Récupérer la progression (pour initialiser le lecteur)
     Route::get('/book/{book}/progress', [BookInteractionController::class, 'getProgress'])
         ->name('progress.get');
 
-    // 👉 Gérer favoris
     Route::post('/book/{book}/favorite', [BookInteractionController::class, 'toggleFavorite'])
         ->name('favorite.toggle');
 });
 
-
-/*
-|--------------------------------------------------------------------------
-| ✍️ SUBMISSION — Manuscrits (Auth)
-|--------------------------------------------------------------------------
-*/
+/* SUBMISSION (auth) */
 Route::middleware('auth')->group(function () {
     Route::get('/submit', [SubmissionFrontController::class, 'create'])->name('submit.create');
     Route::post('/submit', [SubmissionFrontController::class, 'store'])->name('submit.store');
 });
 
-
-/*
-|--------------------------------------------------------------------------
-| 👤 USER ACCOUNT
-|--------------------------------------------------------------------------
-*/
+/* ACCOUNT (auth) */
 Route::middleware('auth')->prefix('account')->name('account.')->group(function () {
-
     Route::get('/', fn() => view('front.account.index'))->name('index');
     Route::get('/books', fn() => view('front.account.books'))->name('books');
 });
 
-
-/*
-|--------------------------------------------------------------------------
-| 🔐 PROFILE (Breeze)
-|--------------------------------------------------------------------------
-*/
+/* PROFILE (Breeze) */
 Route::middleware('auth')->group(function () {
-
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-
 });
-
 
 /*
 |--------------------------------------------------------------------------

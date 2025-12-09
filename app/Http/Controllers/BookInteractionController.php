@@ -3,80 +3,78 @@
 namespace App\Http\Controllers;
 
 use App\Models\Book;
-use App\Models\ReadingProgress;
 use Illuminate\Http\Request;
 
 class BookInteractionController extends Controller
 {
     /**
-     * -------------------------------------
-     * FAVORIS : TOGGLE ON/OFF
-     * -------------------------------------
+     * Toggle favoris ON / OFF
      */
     public function toggleFavorite(Book $book)
     {
         $user = auth()->user();
 
-        if ($user->favorites()->where('book_id', $book->id)->exists()) {
-            $user->favorites()->detach($book->id);
+        // Vérifier que le livre est dans la bibliothèque
+        if (!$user->books->contains($book->id)) {
+            $user->books()->attach($book->id, [
+                'progress'    => 0,
+                'is_favorite' => true,
+            ]);
+        } else {
+            $current = $user->books()->where('book_id', $book->id)->first();
+            $newValue = !$current->pivot->is_favorite;
 
-            return response()->json([
-                'status' => 'removed',
-                'message' => 'Livre retiré des favoris.'
+            $user->books()->updateExistingPivot($book->id, [
+                'is_favorite' => $newValue,
             ]);
         }
 
-        $user->favorites()->attach($book->id);
-
-        return response()->json([
-            'status' => 'added',
-            'message' => 'Livre ajouté aux favoris.'
-        ]);
-    }
-
-
-    /**
-     * -------------------------------------
-     * SAUVEGARDE DE LA PROGRESSION
-     * -------------------------------------
-     */
-    public function updateProgress(Request $req, Book $book)
-    {
-        $req->validate([
-            'progress' => 'required|integer|min:0|max:100'
-        ]);
-
-        $progress = ReadingProgress::updateOrCreate(
-            [
-                'user_id' => auth()->id(),
-                'book_id' => $book->id
-            ],
-            [
-                'progress' => $req->progress
-            ]
-        );
-
         return response()->json([
             'success' => true,
-            'progress' => $progress->progress,
-            'message' => 'Progression mise à jour.'
+            'favorite' => $user->books()->where('book_id', $book->id)->first()->pivot->is_favorite,
         ]);
     }
 
+    /**
+     * Mettre à jour la progression (0–100 %)
+     */
+    public function updateProgress(Request $request, Book $book)
+    {
+        $request->validate([
+            'progress' => 'required|integer|min:0|max:100',
+        ]);
+
+        $user = auth()->user();
+
+        // s'assurer que le livre est dans la bibliothèque
+        if (!$user->books->contains($book->id)) {
+            $user->books()->attach($book->id, [
+                'progress'    => $request->progress,
+                'is_favorite' => false,
+            ]);
+        } else {
+            $user->books()->updateExistingPivot($book->id, [
+                'progress' => $request->progress,
+            ]);
+        }
+
+        return response()->json([
+            'success'  => true,
+            'progress' => $request->progress,
+        ]);
+    }
 
     /**
-     * -------------------------------------
-     * RÉCUPÉRER LA PROGRESSION D'UN LIVRE
-     * -------------------------------------
+     * Récupérer la progression (pour init le lecteur)
      */
     public function getProgress(Book $book)
     {
-        $progress = ReadingProgress::where('user_id', auth()->id())
-            ->where('book_id', $book->id)
-            ->value('progress') ?? 0;
+        $user = auth()->user();
+
+        $pivot = $user->books()->where('book_id', $book->id)->first()?->pivot;
 
         return response()->json([
-            'progress' => $progress
+            'progress' => $pivot?->progress ?? 0,
         ]);
     }
 }

@@ -1,69 +1,43 @@
-@extends('admin.layouts.app')
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Connexion Admin – Fasolivre</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
 
-@section('title', 'Connexion Admin – Fasolivre')
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
 
-@section('content')
-<div class="row justify-content-center">
-    <div class="col-md-5 col-lg-4">
-        <div class="card border-0 shadow-sm mt-5">
-            <div class="card-body p-4">
-                <h1 class="h5 mb-1">Espace administration</h1>
-                <p class="text-muted small mb-4">
-                    Connectez-vous pour gérer les livres, auteurs, catégories et soumissions.
-                </p>
+<div class="bg-white w-full max-w-md p-8 rounded-xl shadow-lg">
+    <h1 class="text-2xl font-bold text-center mb-6">Admin Fasolivre</h1>
 
-                @if ($errors->any())
-                    <div class="alert alert-danger small py-2">
-                        <ul class="mb-0">
-                            @foreach ($errors->all() as $error)
-                                <li>{{ $error }}</li>
-                            @endforeach
-                        </ul>
-                    </div>
-                @endif
-
-                <form method="POST" action="{{ route('admin.login.submit') }}">
-                    @csrf
-
-                    <div class="mb-3">
-                        <label class="form-label small">Adresse e-mail</label>
-                        <input
-                            type="email"
-                            name="email"
-                            value="{{ old('email') }}"
-                            class="form-control form-control-sm @error('email') is-invalid @enderror"
-                            required
-                            autofocus
-                        >
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label small">Mot de passe</label>
-                        <input
-                            type="password"
-                            name="password"
-                            class="form-control form-control-sm @error('password') is-invalid @enderror"
-                            required
-                        >
-                    </div>
-
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="remember" name="remember">
-                        <label class="form-check-label small" for="remember">Se souvenir de moi</label>
-                    </div>
-
-                    <div class="d-grid">
-                        <button class="btn btn-primary btn-sm">
-                            Connexion
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <div class="card-footer text-center small text-muted">
-                © {{ date('Y') }} Fasolivre – Admin
-            </div>
+    @if($errors->any())
+        <div class="mb-4 p-3 bg-red-100 text-red-700 rounded">
+            {{ $errors->first() }}
         </div>
-    </div>
+    @endif
+
+    <form method="POST" action="{{ route('admin.login.submit') }}">
+        @csrf
+
+        <div class="mb-4">
+            <label class="text-sm font-medium">Email</label>
+            <input type="email" name="email" required
+                   class="w-full mt-1 p-2 border rounded-lg">
+        </div>
+
+        <div class="mb-4">
+            <label class="text-sm font-medium">Mot de passe</label>
+            <input type="password" name="password" required
+                   class="w-full mt-1 p-2 border rounded-lg">
+        </div>
+
+        <button class="w-full bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700">
+            Se connecter
+        </button>
+    </form>
+
 </div>
-@endsection
+
+</body>
+</html>
