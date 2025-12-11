@@ -41,6 +41,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/read/{slug}', [ReaderController::class, 'read'])
         ->name('read.book');
 
+    Route::get('/listen/{slug}', [ReaderController::class, 'audio'])
+    ->name('read.audio');
+
+
     Route::post('/book/{book}/progress', [BookInteractionController::class, 'updateProgress'])
         ->name('progress.update');
 
