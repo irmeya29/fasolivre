@@ -9,9 +9,20 @@ use Illuminate\Support\Str;
 
 class CategoryController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $categories = Category::orderBy('id', 'desc')->paginate(10);
+        // 1. On charge le nombre de livres liés
+        $query = Category::withCount('books');
+
+        // 2. Recherche
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%')
+                  ->orWhere('description', 'like', '%' . $request->search . '%');
+        }
+
+        // 3. Pagination
+        $categories = $query->orderBy('id', 'desc')->paginate(10)->withQueryString();
+
         return view('admin.categories.index', compact('categories'));
     }
 
@@ -23,8 +34,8 @@ class CategoryController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name'        => 'required|max:255',
-            'description' => 'nullable|string',
+            'name'        => 'required|max:255|unique:categories,name',
+            'description' => 'nullable|string|max:1000',
         ]);
 
         Category::create([
@@ -34,7 +45,7 @@ class CategoryController extends Controller
         ]);
 
         return redirect()->route('admin.categories.index')
-            ->with('success', 'Catégorie créée avec succès.');
+            ->with('success', 'Catégorie ajoutée au catalogue.');
     }
 
     public function edit(Category $category)
@@ -45,8 +56,8 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category)
     {
         $request->validate([
-            'name'        => 'required|max:255',
-            'description' => 'nullable|string',
+            'name'        => 'required|max:255|unique:categories,name,' . $category->id,
+            'description' => 'nullable|string|max:1000',
         ]);
 
         $category->update([
@@ -61,6 +72,11 @@ class CategoryController extends Controller
 
     public function destroy(Category $category)
     {
+        // Optionnel : Empêcher la suppression s'il y a des livres
+        if ($category->books()->count() > 0) {
+            return back()->with('error', 'Impossible de supprimer cette catégorie car elle contient des livres.');
+        }
+
         $category->delete();
 
         return redirect()->route('admin.categories.index')
