@@ -4,22 +4,18 @@
 
 @section('content')
 
-@php
-    $existingPdf = !empty($book->pdf_file);
-    $existingAudio = !empty($book->audio_file);
-@endphp
-
-<div class="max-w-6xl mx-auto" x-data="{
-    format: '{{ old('format', $book->format) }}',
-    accessType: '{{ old('access_type', $book->access_type) }}',
-    coverPreview: '{{ $book->cover ? asset('storage/'.$book->cover) : '' }}',
-    hasPdf: {{ $existingPdf ? 'true' : 'false' }},
-    hasAudio: {{ $existingAudio ? 'true' : 'false' }},
-    updatePreview(event) {
-        const file = event.target.files[0];
-        if (file) this.coverPreview = URL.createObjectURL(file);
-    }
-}">
+<div class="max-w-6xl mx-auto"
+     x-data="{
+        format: @js(old('format', $book->format)),
+        accessType: @js(old('access_type', $book->access_type)),
+        coverPreview: @js($book->cover ? asset('storage/'.$book->cover) : null),
+        hasPdf: @js(!empty($book->pdf_file)),
+        hasAudio: @js(!empty($book->audio_file)),
+        updatePreview(event) {
+            const file = event.target.files[0];
+            if (file) this.coverPreview = URL.createObjectURL(file);
+        }
+     }">
 
     {{-- HEADER --}}
     <div class="flex items-center justify-between mb-8">
@@ -52,7 +48,7 @@
             {{-- COLONNE GAUCHE --}}
             <div class="lg:col-span-2 space-y-6">
 
-                {{-- CARTE 1 --}}
+                {{-- CARTE 1 : INFOS --}}
                 <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
                     <h2 class="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
                         <i data-feather="info" class="w-4 h-4 text-indigo-500"></i>
@@ -83,7 +79,7 @@
                     </div>
                 </div>
 
-                {{-- CARTE 2 --}}
+                {{-- CARTE 2 : CONTENU --}}
                 <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
                     <h2 class="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
                         <i data-feather="file-text" class="w-4 h-4 text-indigo-500"></i>
@@ -256,6 +252,7 @@
                                 <input type="number" name="price" min="0"
                                        value="{{ old('price', $book->price) }}"
                                        :required="accessType === 'paid'"
+                                       :disabled="accessType !== 'paid'"
                                        class="w-full rounded-lg border-gray-300 border pl-3 pr-12 py-2 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20">
                                 <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
                                     <span class="text-gray-500 sm:text-sm">FCFA</span>
