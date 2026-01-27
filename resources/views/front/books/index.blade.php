@@ -38,6 +38,7 @@
             <i data-lucide="search" class="w-5 h-5 text-slate-500"></i>
 
             <input type="text" name="q"
+                   value="{{ request('q') }}"
                    placeholder="Rechercher un livre, auteur..."
                    class="bg-transparent flex-1 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none">
 
@@ -48,7 +49,6 @@
 
     </div>
 
-
     {{-- BOOKS GRID --}}
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-7">
 
@@ -58,8 +58,11 @@
 
             {{-- COVER --}}
             <div class="relative">
-                <img src="{{ asset('storage/'.$book->cover) }}"
-                     class="w-full h-64 object-cover group-hover:scale-105 transition duration-300">
+                <img
+                    src="{{ $book->cover ? asset('storage/'.$book->cover) : asset('images/placeholder-book.jpg') }}"
+                    class="w-full h-64 object-cover group-hover:scale-105 transition duration-300"
+                    alt="{{ $book->title }}"
+                >
 
                 @if($book->access_type == 'free')
                     <span class="absolute top-3 left-3 px-2 py-1 rounded-lg bg-green-100 text-green-700 text-[10px] font-semibold">
@@ -94,12 +97,10 @@
                         <span class="text-xs px-3 py-1 rounded-lg bg-green-100 text-green-700 font-medium">
                             Gratuit
                         </span>
-
                     @elseif($book->access_type == 'paid')
                         <span class="text-xs px-3 py-1 rounded-lg bg-[var(--faso-orange)]/10 text-[var(--faso-orange)] font-semibold">
                             {{ number_format($book->price, 0, ',', ' ') }} FCFA
                         </span>
-
                     @else
                         <span class="text-xs px-3 py-1 rounded-lg bg-indigo-100 text-indigo-700 font-semibold">
                             Abonnement
@@ -108,18 +109,14 @@
                 </div>
 
             </div>
-
         </a>
         @empty
-
             <div class="col-span-full text-center text-slate-500 py-20">
                 Aucun livre trouvé pour le moment.
             </div>
-
         @endforelse
 
     </div>
-
 
     {{-- PAGINATION --}}
     <div class="mt-12 flex justify-center">
