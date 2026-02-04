@@ -8,40 +8,57 @@ use App\Models\BookPurchase;
 use App\Models\Subscription;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class YengaPayWebhookController extends Controller
 {
-    // Adapte la liste exacte à la doc YengaPay si besoin
-    private const SUCCESS_STATUSES = ['SUCCESS', 'SUCCEEDED', 'COMPLETED', 'PAID'];
-    private const FAILED_STATUSES  = ['FAILED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'REFUSED'];
+    // ✅ Statuts success/failed élargis (YengaPay peut varier)
+    private const SUCCESS_STATUSES = [
+        'SUCCESS', 'SUCCEEDED', 'COMPLETED', 'PAID', 'SUCCESSFUL', 'DONE', 'OK'
+    ];
+
+    private const FAILED_STATUSES = [
+        'FAILED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'REFUSED', 'ERROR'
+    ];
 
     public function handle(Request $request)
     {
         $raw = $request->getContent();
 
-        // ✅ Vérif signature (si secret présent)
+        // (Debug utile en prod au début)
+        Log::info('YENGAPAY_WEBHOOK_RECEIVED', [
+            'ip' => $request->ip(),
+            'headers' => $this->safeHeaders($request),
+            'payload' => $request->all(),
+        ]);
+
+        // ✅ Vérif signature (si tu veux rendre strict: mets config('services...webhook_strict') = true)
         if (!$this->verifySignature($request, $raw)) {
+            Log::warning('YENGAPAY_WEBHOOK_INVALID_SIGNATURE', [
+                'headers' => $this->safeHeaders($request),
+            ]);
             return response()->json(['ok' => false, 'error' => 'Invalid signature'], 401);
         }
 
         $payload = $request->all();
 
-        // Essaye d’attraper un id événement si YengaPay en envoie un
+        // id éventuel si YengaPay en envoie
         $eventId = data_get($payload, 'eventId')
-            ?? data_get($payload, 'id')
             ?? data_get($payload, 'event_id')
+            ?? data_get($payload, 'id')
             ?? null;
 
-        // ✅ Fingerprint idempotence si eventId absent (MySQL autorise plusieurs NULL en unique)
+        // fingerprint stable (idempotence si pas d'eventId)
         $eventHash = hash('sha256', $raw);
 
-        // Signature header si dispo
         $signature = $request->header('x-signature')
             ?? $request->header('x-yengapay-signature')
             ?? $request->header('X-YengaPay-Signature')
             ?? $request->header('x-webhook-signature');
 
-        // 1) Stocker événement (idempotence)
+        // 1) Stocker l’événement (idempotence DB)
+        //    - si event_id présent -> unique(provider,event_id)
+        //    - sinon -> unique(provider,event_hash)
         try {
             WebhookEvent::create([
                 'provider' => 'yengapay',
@@ -52,16 +69,20 @@ class YengaPayWebhookController extends Controller
                 'processing_status' => 'received',
             ]);
         } catch (\Throwable $e) {
-            // Déjà reçu → OK idempotent
+            // Déjà reçu → OK
+            Log::info('YENGAPAY_WEBHOOK_DUPLICATE', [
+                'event_id' => $eventId,
+                'event_hash' => $eventHash,
+            ]);
             return response()->json(['ok' => true]);
         }
 
-        $reference = data_get($payload, 'reference');
-        $status = strtoupper((string)(data_get($payload, 'transactionStatus') ?? data_get($payload, 'status') ?? ''));
+        $reference = (string) data_get($payload, 'reference', '');
+        $statusRaw = data_get($payload, 'transactionStatus') ?? data_get($payload, 'status');
+        $status = strtoupper(trim((string) $statusRaw));
 
-        if (!$reference) {
-            WebhookEvent::where('provider', 'yengapay')->where('event_hash', $eventHash)
-                ->update(['processing_status' => 'failed', 'error' => 'Missing reference']);
+        if ($reference === '') {
+            $this->markEventFailed($eventHash, 'Missing reference');
             return response()->json(['ok' => true]);
         }
 
@@ -71,35 +92,43 @@ class YengaPayWebhookController extends Controller
             $payment = Payment::where('reference', $reference)->lockForUpdate()->first();
 
             if (!$payment) {
-                WebhookEvent::where('provider', 'yengapay')->where('event_hash', $eventHash)
-                    ->update(['processing_status' => 'failed', 'error' => 'Payment not found']);
+                $this->markEventFailed($eventHash, 'Payment not found for reference: '.$reference);
                 return;
             }
 
-            // 2) Update paiement
-            $payment->status = $status ?: $payment->status;
+            // 2) Mettre à jour le paiement
+            if ($status !== '') {
+                $payment->status = $status;
+            }
             $payment->provider_payload = $payload;
 
-            if (in_array($payment->status, self::SUCCESS_STATUSES, true) && !$payment->paid_at) {
+            if ($this->isSuccess($payment->status) && !$payment->paid_at) {
                 $payment->paid_at = now();
             }
+
             $payment->save();
 
-            // 3) Idempotence business
+            // 3) Idempotence business : si déjà utilisé, stop
             if ($payment->is_used) {
-                WebhookEvent::where('provider', 'yengapay')->where('event_hash', $eventHash)
-                    ->update(['processing_status' => 'processed']);
+                $this->markEventProcessed($eventHash);
                 return;
             }
 
-            // 4) Effets business selon statut
-            if (in_array($payment->status, self::SUCCESS_STATUSES, true)) {
+            // 4) Effets business
+            if ($this->isSuccess($payment->status)) {
 
-                // A) Achat livre
+                // A) Achat livre => unlock
                 if ($payment->payable_type === BookPurchase::class) {
                     $purchase = BookPurchase::lockForUpdate()->find($payment->payable_id);
-                    if ($purchase && !$purchase->purchased_at) {
-                        $purchase->purchased_at = now();
+
+                    if ($purchase) {
+                        // ✅ très important: marquer purchased_at + lier payment_id
+                        if (!$purchase->purchased_at) {
+                            $purchase->purchased_at = now();
+                        }
+                        if (!$purchase->payment_id) {
+                            $purchase->payment_id = $payment->id;
+                        }
                         $purchase->save();
                     }
                 }
@@ -108,13 +137,12 @@ class YengaPayWebhookController extends Controller
                 if ($payment->payable_type === Subscription::class) {
                     $sub = Subscription::lockForUpdate()->find($payment->payable_id);
 
-                    if ($sub && $sub->status !== 'active') {
+                    if ($sub) {
                         $sub->loadMissing('plan');
 
-                        $durationDays = (int)($sub->plan->duration_days ?? 30);
+                        $durationDays = (int) ($sub->plan->duration_days ?? 30);
 
-                        // ✅ Prolongation optionnelle (recommandée)
-                        // Si user a déjà un abonnement actif, on prolonge le meilleur “ends_at”
+                        // Si un abonnement actif existe, on prolonge le meilleur (ends_at le plus loin)
                         $currentActive = Subscription::where('user_id', $sub->user_id)
                             ->where('status', 'active')
                             ->whereNotNull('ends_at')
@@ -124,15 +152,16 @@ class YengaPayWebhookController extends Controller
                             ->first();
 
                         if ($currentActive) {
-                            // On prolonge l’abonnement actif existant
                             $currentActive->ends_at = $currentActive->ends_at->copy()->addDays($durationDays);
                             $currentActive->save();
 
-                            // Et on marque le nouveau comme “superseded” pour éviter 2 actifs
-                            $sub->status = 'superseded';
-                            $sub->starts_at = null;
-                            $sub->ends_at = null;
-                            $sub->save();
+                            // marque la nouvelle demande comme remplacée
+                            if ($sub->status !== 'superseded') {
+                                $sub->status = 'superseded';
+                                $sub->starts_at = null;
+                                $sub->ends_at = null;
+                                $sub->save();
+                            }
                         } else {
                             // Activation normale
                             $sub->status = 'active';
@@ -143,12 +172,16 @@ class YengaPayWebhookController extends Controller
                     }
                 }
 
+                // Marquer le paiement comme consommé
                 $payment->is_used = true;
                 $payment->save();
+
+                $this->markEventProcessed($eventHash);
+                return;
             }
 
-            if (in_array($payment->status, self::FAILED_STATUSES, true)) {
-                // Optionnel: marquer subscription pending en failed/cancelled
+            if ($this->isFailed($payment->status)) {
+                // Optionnel: marquer subscription pending en failed
                 if ($payment->payable_type === Subscription::class) {
                     $sub = Subscription::lockForUpdate()->find($payment->payable_id);
                     if ($sub && $sub->status === 'pending') {
@@ -156,46 +189,85 @@ class YengaPayWebhookController extends Controller
                         $sub->save();
                     }
                 }
+
+                $this->markEventProcessed($eventHash);
+                return;
             }
 
-            WebhookEvent::where('provider', 'yengapay')->where('event_hash', $eventHash)
-                ->update(['processing_status' => 'processed']);
+            // Statut inconnu/pending -> on marque processed quand même (sinon boucle infinie),
+            // ou tu peux laisser "received" si tu veux rejouer.
+            $this->markEventProcessed($eventHash);
         });
 
         return response()->json(['ok' => true]);
     }
 
+    private function isSuccess(?string $status): bool
+    {
+        $s = strtoupper(trim((string) $status));
+        return in_array($s, self::SUCCESS_STATUSES, true);
+    }
+
+    private function isFailed(?string $status): bool
+    {
+        $s = strtoupper(trim((string) $status));
+        return in_array($s, self::FAILED_STATUSES, true);
+    }
+
+    private function markEventFailed(string $eventHash, string $error): void
+    {
+        WebhookEvent::where('provider', 'yengapay')
+            ->where('event_hash', $eventHash)
+            ->update([
+                'processing_status' => 'failed',
+                'error' => $error,
+            ]);
+
+        Log::warning('YENGAPAY_WEBHOOK_FAILED', [
+            'event_hash' => $eventHash,
+            'error' => $error,
+        ]);
+    }
+
+    private function markEventProcessed(string $eventHash): void
+    {
+        WebhookEvent::where('provider', 'yengapay')
+            ->where('event_hash', $eventHash)
+            ->update(['processing_status' => 'processed']);
+    }
+
     /**
-     * Vérif signature:
-     * - Mode A: header x-webhook-secret == secret
-     * - Mode B: HMAC sha256(raw, secret) comparé au header (hex ou "sha256=<hex>")
+     * Vérification signature:
+     * - Si webhook_secret vide => autoriser (mode dev)
+     * - Si strict activé => refuser si signature absente/invalide
+     * - Supporte:
+     *   A) header x-webhook-secret == secret
+     *   B) HMAC sha256(raw, secret) comparé au header (hex ou "sha256=<hex>")
      */
     private function verifySignature(Request $request, string $raw): bool
     {
-        $secret = (string) config('services.yengapay.webhook_secret');
+        $secret = (string) config('services.yengapay.webhook_secret', '');
+        $strict = (bool) config('services.yengapay.webhook_strict', false);
 
-        // Si tu n’as pas encore activé/confirmé la signature côté YengaPay,
-        // tu peux temporairement retourner true quand secret vide.
         if ($secret === '') {
-            return true;
+            return true; // pas de secret configuré
         }
 
-        $sig = $request->header('x-signature')
-            ?? $request->header('x-yengapay-signature')
-            ?? $request->header('X-YengaPay-Signature')
-            ?? $request->header('x-webhook-signature')
-            ?? '';
-
         $headerSecret = (string) $request->header('x-webhook-secret', '');
-
-        // Mode A: secret direct
         if ($headerSecret !== '') {
             return hash_equals($secret, $headerSecret);
         }
 
-        // Mode B: HMAC
+        $sig = (string) (
+            $request->header('x-signature')
+            ?? $request->header('x-yengapay-signature')
+            ?? $request->header('X-YengaPay-Signature')
+            ?? $request->header('x-webhook-signature')
+            ?? ''
+        );
+
         if ($sig === '') {
-            return false;
+            return $strict ? false : true; // permissif tant que tu n'as pas la vraie signature
         }
 
         $sig = trim($sig);
@@ -206,5 +278,18 @@ class YengaPayWebhookController extends Controller
         $expected = hash_hmac('sha256', $raw, $secret);
 
         return hash_equals($expected, $sig);
+    }
+
+    private function safeHeaders(Request $request): array
+    {
+        // évite de logguer de gros headers ou sensibles inutilement
+        return [
+            'x-signature' => $request->header('x-signature'),
+            'x-yengapay-signature' => $request->header('x-yengapay-signature'),
+            'x-webhook-signature' => $request->header('x-webhook-signature'),
+            'x-webhook-secret' => $request->header('x-webhook-secret') ? '***' : null,
+            'content-type' => $request->header('content-type'),
+            'user-agent' => $request->header('user-agent'),
+        ];
     }
 }

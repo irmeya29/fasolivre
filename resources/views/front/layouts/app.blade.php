@@ -30,10 +30,6 @@
             --faso-dark:  #3E3E3E;
         }
 
-        .brand-gradient {
-            background: linear-gradient(135deg, var(--faso-orange), var(--faso-green));
-        }
-
         /* Header glassmorphism */
         .header-glass {
             background: rgba(255, 255, 255, 0.9);
@@ -41,25 +37,22 @@
             -webkit-backdrop-filter: blur(12px);
         }
 
-        /* Smooth transitions */
-        * {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        /* Smooth transitions (light) */
+        a, button, input {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         /* Custom scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
         }
-
         ::-webkit-scrollbar-track {
             background: #f1f1f1;
         }
-
         ::-webkit-scrollbar-thumb {
             background: var(--faso-orange);
             border-radius: 4px;
         }
-
         ::-webkit-scrollbar-thumb:hover {
             background: var(--faso-green);
         }
@@ -69,7 +62,6 @@
             position: relative;
             padding-bottom: 4px;
         }
-
         .nav-link::after {
             content: '';
             position: absolute;
@@ -80,7 +72,6 @@
             background: var(--faso-orange);
             transition: width 0.3s ease;
         }
-
         .nav-link:hover::after {
             width: 100%;
         }
@@ -89,7 +80,6 @@
         #mobileMenu {
             animation: slideDown 0.3s ease-out;
         }
-
         @keyframes slideDown {
             from {
                 opacity: 0;
@@ -105,9 +95,8 @@
         .logo-hover {
             transition: transform 0.3s ease;
         }
-
         .logo-hover:hover {
-            transform: scale(1.05);
+            transform: scale(1.03);
         }
     </style>
 </head>
@@ -119,14 +108,13 @@
         <div class="max-w-7xl mx-auto px-4 lg:px-6">
             <div class="flex justify-between items-center h-20">
 
-                <!-- Logo -->
+                <!-- Logo (image intégrée) -->
                 <a href="{{ route('home') }}" class="flex items-center gap-3 logo-hover group">
-                    <div class="w-10 h-10 brand-gradient rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg">
-                        <i data-lucide="book-open" class="w-5 h-5 text-white"></i>
-                    </div>
-                    <span class="text-2xl font-bold bg-gradient-to-r from-[var(--faso-orange)] to-[var(--faso-green)] bg-clip-text text-transparent">
-                        Fasolivre
-                    </span>
+                    <img
+                        src="{{ asset('assets/branding/fasolivre-logo.png') }}"
+                       class="h-[150px] w-auto object-contain" alt="Fasolivre">
+
+
                 </a>
 
                 <!-- Desktop Navigation -->
@@ -168,7 +156,7 @@
                     @auth
                         <a href="{{ route('account.index') }}"
                            class="flex items-center gap-2 px-5 py-2.5 bg-[var(--faso-green)] text-white rounded-xl
-                                  hover:bg-emerald-700 hover:shadow-lg font-medium">
+                                  hover:bg-emerald-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 font-medium">
                             <i data-lucide="user" class="w-4 h-4"></i>
                             <span>Mon compte</span>
                         </a>
@@ -185,8 +173,11 @@
                            class="text-gray-700 hover:text-[var(--faso-orange)] font-medium">
                             Connexion
                         </a>
+
+                        <!-- Inscription : couleur unique (plus de dégradé) -->
                         <a href="{{ route('register') }}"
-                           class="px-5 py-2.5 brand-gradient text-white rounded-xl hover:shadow-lg font-medium">
+                           class="px-5 py-2.5 bg-[var(--faso-orange)] text-white rounded-xl font-medium
+                                  hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0">
                             Inscription
                         </a>
                     @endauth
@@ -237,7 +228,7 @@
 
                 @auth
                     <div class="pt-4 border-t border-gray-100 space-y-1">
-                        <a href="{{ route('account.index') }}" class="flex items-center gap-3 px-4 py-3 bg-[var(--faso-green)] text-white rounded-lg font-medium">
+                        <a href="{{ route('account.index') }}" class="flex items-center gap-3 px-4 py-3 bg-[var(--faso-green)] text-white rounded-lg font-medium hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0">
                             <i data-lucide="user" class="w-5 h-5"></i>
                             <span>Mon compte</span>
                         </a>
@@ -258,7 +249,10 @@
                             <span>Connexion</span>
                         </a>
 
-                        <a href="{{ route('register') }}" class="flex items-center gap-3 px-4 py-3 brand-gradient text-white rounded-lg font-medium">
+                        <!-- Inscription mobile : couleur unique -->
+                        <a href="{{ route('register') }}"
+                           class="flex items-center gap-3 px-4 py-3 bg-[var(--faso-orange)] text-white rounded-lg font-medium
+                                  hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0">
                             <i data-lucide="user-plus" class="w-5 h-5"></i>
                             <span>Inscription</span>
                         </a>
@@ -284,10 +278,12 @@
                 <!-- About -->
                 <div class="lg:col-span-2">
                     <div class="flex items-center gap-3 mb-4">
-                        <div class="w-10 h-10 brand-gradient rounded-xl flex items-center justify-center">
-                            <i data-lucide="book-open" class="w-5 h-5 text-white"></i>
-                        </div>
-                        <span class="text-2xl font-bold text-white">Fasolivre</span>
+                        <img
+                            src="{{ asset('assets/branding/fasolivre-logo.png') }}"
+                            alt="Fasolivre"
+                            class="h-[150px] w-auto"
+                        />
+
                     </div>
                     <p class="text-gray-400 leading-relaxed mb-6 max-w-md">
                         L'univers numérique africain du livre, dédié aux auteurs,
@@ -402,7 +398,6 @@
         function toggleMobileMenu() {
             const menu = document.getElementById('mobileMenu');
             menu.classList.toggle('hidden');
-            // Réinitialiser les icônes après l'animation
             setTimeout(() => lucide.createIcons(), 100);
         }
 

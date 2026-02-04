@@ -11,37 +11,37 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    /**
-     * Display the login view.
-     */
-    public function create(): View
+    public function create(Request $request): View|RedirectResponse
     {
-        // Si l’utilisateur est déjà connecté → on le renvoie au tableau de bord
+        // ✅ Si on arrive avec ?redirect=/books/xxx, on force l'intended
+        $redirect = (string) $request->query('redirect', '');
+        if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
+            $request->session()->put('url.intended', $redirect);
+        }
+
+        // Si déjà connecté → on va là où Laravel veut (intended), sinon /account
         if (Auth::check()) {
-            return redirect()->route('account.index');
+            return redirect()->intended(route('account.index'));
         }
 
         return view('auth.login');
     }
 
-    /**
-     * Handle an incoming authentication request.
-     */
     public function store(LoginRequest $request): RedirectResponse
-    {
-        $request->authenticate();
-
-        $request->session()->regenerate();
-
-        // Redirection intelligente :
-        // - si l'utilisateur venait d'une page protégée, on y retourne (intended)
-        // - sinon on va au tableau de bord Fasolivre
-        return redirect()->intended(route('account.index'));
+{
+    // ✅ si on a un redirect=... on le force comme intended
+    if ($request->filled('redirect')) {
+        $request->session()->put('url.intended', $request->input('redirect'));
     }
 
-    /**
-     * Destroy an authenticated session.
-     */
+    $request->authenticate();
+    $request->session()->regenerate();
+
+    // ✅ d'abord intended, sinon books.index (ou home)
+    return redirect()->intended(route('books.index'));
+}
+
+
     public function destroy(Request $request): RedirectResponse
     {
         Auth::guard('web')->logout();
@@ -49,7 +49,18 @@ class AuthenticatedSessionController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        // Redirection propre après logout
         return redirect('/');
+    }
+
+    private function isSafeRedirect(string $url): bool
+    {
+        // Autorise URL relative: /books/xxx
+        if (str_starts_with($url, '/')) return true;
+
+        // Autorise URL absolue uniquement si même host que APP_URL
+        $host = parse_url($url, PHP_URL_HOST);
+        $appHost = parse_url(config('app.url'), PHP_URL_HOST);
+
+        return $host && $appHost && strtolower($host) === strtolower($appHost);
     }
 }

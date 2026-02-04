@@ -6,17 +6,22 @@
 @php
     $user = auth()->user();
 
+    // Sécurité si cover/category manquent
     $category = $book->category;
     $coverUrl = $book->cover ? asset('storage/'.$book->cover) : asset('images/placeholder-book.jpg');
 
+    // États d’accès
     $hasPurchase = false;
+    $hasPendingPurchase = false;
     $hasActiveSub = false;
 
     if ($user) {
-        $hasPurchase = \App\Models\BookPurchase::where('user_id', $user->id)
+        $purchase = \App\Models\BookPurchase::where('user_id', $user->id)
             ->where('book_id', $book->id)
-            ->whereNotNull('purchased_at')
-            ->exists();
+            ->first();
+
+        $hasPurchase = $purchase && !is_null($purchase->purchased_at);
+        $hasPendingPurchase = $purchase && is_null($purchase->purchased_at);
 
         $hasActiveSub = \App\Models\Subscription::where('user_id', $user->id)
             ->where('status', 'active')
@@ -29,11 +34,15 @@
         $book->access_type === 'free'
         || ($book->access_type === 'paid' && $hasPurchase)
         || ($book->access_type === 'subscription' && $hasActiveSub)
-        || $hasPurchase;
+        || $hasPurchase; // achat autorisé même si subscription
+
+    // ✅ Login revient sur la page du livre
+    $loginUrl = route('login', ['redirect' => url()->current()]);
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 py-10">
 
+    {{-- BREADCRUMB --}}
     <div class="flex items-center gap-2 text-sm text-slate-500 mb-6">
         <a href="{{ route('books.index') }}" class="hover:text-[#E0551B] flex items-center gap-1">
             <i data-lucide="arrow-left" class="w-4 h-4"></i> Retour
@@ -49,17 +58,19 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
 
+        {{-- COVER + CTA --}}
         <div>
             <img src="{{ $coverUrl }}"
                  alt="{{ $book->title }}"
                  class="rounded-2xl shadow-xl w-full object-cover aspect-[3/4]">
 
+            {{-- Badge accès --}}
             <div class="mt-6">
-                @if($book->access_type == 'free')
+                @if($book->access_type === 'free')
                     <span class="inline-flex items-center gap-2 px-4 py-2 bg-emerald-100 text-emerald-700 rounded-full text-sm">
                         <i data-lucide="badge-check" class="w-4 h-4"></i> Gratuit
                     </span>
-                @elseif($book->access_type == 'paid')
+                @elseif($book->access_type === 'paid')
                     <span class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-full text-sm">
                         <i data-lucide="shopping-bag" class="w-4 h-4"></i> {{ number_format($book->price,0,',',' ') }} FCFA
                     </span>
@@ -70,24 +81,24 @@
                 @endif
             </div>
 
+            {{-- CTA --}}
             <div class="mt-8 space-y-3">
 
                 @auth
 
+                    {{-- ✅ Accès autorisé --}}
                     @if($canRead)
 
                         @if($book->pdf_file)
                             <a href="{{ route('read.book', ['slug' => $book->slug]) }}"
-                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl
-                                      bg-[#079C25] text-white font-medium hover:bg-[#06801f]">
+                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#079C25] text-white font-medium hover:bg-[#06801f]">
                                 <i data-lucide="book-open" class="w-5 h-5"></i> Lire le livre (PDF)
                             </a>
                         @endif
 
                         @if($book->audio_file)
                             <a href="{{ route('read.audio', $book->slug) }}"
-                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl
-                                      bg-[#E0551B] text-white font-medium hover:bg-[#c64b19]">
+                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#E0551B] text-white font-medium hover:bg-[#c64b19]">
                                 <i data-lucide="headphones" class="w-5 h-5"></i> Écouter l'audiobook
                             </a>
                         @endif
@@ -99,39 +110,51 @@
                         @endif
 
                     @else
-
+                        {{-- ❌ Pas d’accès => payer / abonnement --}}
                         @if($book->access_type === 'paid')
-                            <button type="button" data-book-id="{{ $book->id }}"
-                                class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl
-                                       bg-indigo-600 text-white font-medium hover:bg-indigo-700">
-                                <i data-lucide="credit-card" class="w-5 h-5"></i> Payer pour lire
-                            </button>
+
+                            @if($hasPendingPurchase)
+                                <div class="w-full px-5 py-3 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-700 text-sm">
+                                    Paiement en cours… Ton accès sera activé dès confirmation.
+                                    <div class="text-xs mt-1 text-yellow-600">Rafraîchis la page après quelques secondes.</div>
+                                </div>
+                            @else
+                                <button type="button"
+                                    data-book-id="{{ $book->id }}"
+                                    class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white font-medium hover:bg-indigo-700">
+                                    <i data-lucide="credit-card" class="w-5 h-5"></i> Payer pour lire
+                                </button>
+                            @endif
 
                         @elseif($book->access_type === 'subscription')
-                            {{-- ✅ FIX: page UI abonnement --}}
+
                             <a href="{{ route('plans.page') }}"
-                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl
-                                      bg-orange-600 text-white font-medium hover:bg-orange-700">
+                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-orange-600 text-white font-medium hover:bg-orange-700">
                                 <i data-lucide="crown" class="w-5 h-5"></i> Voir les abonnements
                             </a>
 
-                            <button type="button" data-book-id="{{ $book->id }}"
-                                class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl
-                                       bg-slate-900 text-white font-medium hover:bg-slate-800">
-                                <i data-lucide="credit-card" class="w-5 h-5"></i> Acheter ce livre
-                            </button>
+                            @if($hasPendingPurchase)
+                                <div class="w-full px-5 py-3 rounded-xl bg-yellow-50 border border-yellow-200 text-yellow-700 text-sm">
+                                    Paiement en cours… Ton accès sera activé dès confirmation.
+                                </div>
+                            @else
+                                <button type="button"
+                                    data-book-id="{{ $book->id }}"
+                                    class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-medium hover:bg-slate-800">
+                                    <i data-lucide="credit-card" class="w-5 h-5"></i> Acheter ce livre
+                                </button>
+                            @endif
+
                         @endif
 
                         <div class="text-xs text-slate-500 leading-relaxed">
-                            Ton accès sera activé automatiquement après confirmation du paiement (via webhook).
+                            Ton accès sera activé automatiquement après confirmation du paiement (webhook).
                         </div>
-
                     @endif
 
                 @else
-                    <a href="{{ route('login') }}"
-                       class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl
-                              bg-indigo-600 text-white hover:bg-indigo-700">
+                    <a href="{{ $loginUrl }}"
+                       class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700">
                         <i data-lucide="lock" class="w-5 h-5"></i> Se connecter pour continuer
                     </a>
                 @endauth
@@ -139,6 +162,7 @@
             </div>
         </div>
 
+        {{-- BOOK DETAILS --}}
         <div class="lg:col-span-2 space-y-6">
             <h1 class="text-3xl font-semibold text-slate-900">{{ $book->title }}</h1>
 
@@ -174,42 +198,41 @@
 
     </div>
 
+    {{-- LIVRES SIMILAIRES --}}
     @if($category)
-    <div class="mt-16">
-        <h2 class="text-xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
-            <i data-lucide="sparkles" class="w-5 h-5 text-[#E0551B]"></i>
-            Livres similaires
-        </h2>
+        <div class="mt-16">
+            <h2 class="text-xl font-semibold text-slate-900 mb-6 flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-5 h-5 text-[#E0551B]"></i>
+                Livres similaires
+            </h2>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
-            @foreach(
-                \App\Models\Book::where('category_id', $book->category_id)
-                    ->where('id','!=',$book->id)
-                    ->published()
-                    ->take(10)->get()
-            as $sim)
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
+                @foreach(
+                    \App\Models\Book::where('category_id', $book->category_id)
+                        ->where('id','!=',$book->id)
+                        ->published()
+                        ->take(10)->get()
+                as $sim)
+                    <a href="{{ route('books.show', $sim->slug) }}"
+                       class="bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden">
 
-                <a href="{{ route('books.show', $sim->slug) }}"
-                   class="bg-white rounded-xl shadow hover:shadow-lg transition overflow-hidden">
+                        <img src="{{ $sim->cover ? asset('storage/'.$sim->cover) : asset('images/placeholder-book.jpg') }}"
+                             alt="{{ $sim->title }}"
+                             class="w-full h-56 object-cover">
 
-                    <img src="{{ $sim->cover ? asset('storage/'.$sim->cover) : asset('images/placeholder-book.jpg') }}"
-                         alt="{{ $sim->title }}"
-                         class="w-full h-56 object-cover">
-
-                    <div class="p-3">
-                        <h3 class="font-medium text-sm">{{ \Illuminate\Support\Str::limit($sim->title, 40) }}</h3>
-                        <p class="text-xs text-gray-500">{{ optional($sim->author)->name ?? '' }}</p>
-                    </div>
-
-                </a>
-
-            @endforeach
+                        <div class="p-3">
+                            <h3 class="font-medium text-sm">{{ \Illuminate\Support\Str::limit($sim->title, 40) }}</h3>
+                            <p class="text-xs text-gray-500">{{ optional($sim->author)->name ?? '' }}</p>
+                        </div>
+                    </a>
+                @endforeach
+            </div>
         </div>
-    </div>
     @endif
 
 </div>
 
+{{-- JS Paiement livre --}}
 @auth
 <script>
 document.addEventListener('DOMContentLoaded', () => {

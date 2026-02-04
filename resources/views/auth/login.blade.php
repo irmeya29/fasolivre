@@ -13,16 +13,31 @@
         </div>
     @endif
 
+    {{-- ✅ Erreurs globales --}}
+    @if($errors->any())
+        <div class="mb-4 p-3 text-sm text-red-700 bg-red-100 rounded-lg">
+            <ul class="list-disc list-inside space-y-1">
+                @foreach($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     {{-- FORM --}}
     <form method="POST" action="{{ route('login') }}" class="space-y-5">
         @csrf
+
+        {{-- ✅ IMPORTANT: permet de revenir à la page du livre --}}
+        <input type="hidden" name="redirect" value="{{ request('redirect') }}">
+
 
         {{-- Email --}}
         <div>
             <label class="block text-sm font-medium text-slate-700 mb-1">Adresse email</label>
             <div class="relative">
                 <i data-lucide="mail" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                <input type="email" name="email" required autofocus
+                <input type="email" name="email" required autofocus value="{{ old('email') }}"
                     class="w-full pl-10 pr-3 py-2.5 border rounded-xl bg-gray-50 focus:bg-white
                            focus:ring-2 focus:ring-[#E0551B] transition text-sm">
             </div>
@@ -42,7 +57,7 @@
         {{-- Remember + Forgot --}}
         <div class="flex items-center justify-between text-sm">
             <label class="flex items-center gap-2">
-                <input type="checkbox" name="remember"
+                <input type="checkbox" name="remember" {{ old('remember') ? 'checked' : '' }}
                        class="rounded border-gray-300 text-[#079C25] focus:ring-[#079C25]">
                 Se souvenir de moi
             </label>
