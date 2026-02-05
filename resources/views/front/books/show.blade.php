@@ -26,17 +26,11 @@
 
 @php
     $user = auth()->user();
-
     $category = $book->category;
     $coverUrl = $book->cover ? asset('storage/'.$book->cover) : asset('images/placeholder-book.jpg');
 
-    $isFree = $book->access_type === 'free';
-    $isPaid = $book->access_type === 'paid';
-    $isSub  = $book->access_type === 'subscription';
-
     $hasPurchase = false;
     $hasPendingPurchase = false;
-    $pendingCheckoutUrl = null;
     $hasActiveSub = false;
 
     if ($user) {
@@ -47,16 +41,6 @@
         $hasPurchase = $purchase && !is_null($purchase->purchased_at);
         $hasPendingPurchase = $purchase && is_null($purchase->purchased_at);
 
-        if ($hasPendingPurchase) {
-            $pendingPayment = \App\Models\Payment::where('payable_type', \App\Models\BookPurchase::class)
-                ->where('payable_id', $purchase->id)
-                ->whereIn('status', ['PENDING'])
-                ->orderByDesc('id')
-                ->first();
-
-            $pendingCheckoutUrl = $pendingPayment?->checkout_url;
-        }
-
         $hasActiveSub = \App\Models\Subscription::where('user_id', $user->id)
             ->where('status', 'active')
             ->whereNotNull('ends_at')
@@ -64,25 +48,30 @@
             ->exists();
     }
 
+    $isFree = $book->access_type === 'free';
+    $isPaid = $book->access_type === 'paid';
+    $isSub  = $book->access_type === 'subscription';
+
     $canRead =
         $isFree
         || ($isPaid && $hasPurchase)
         || ($isSub && $hasActiveSub)
         || $hasPurchase;
 
+    // ✅ after login, return to book page + autoPay=1 for paid books
+    $loginUrl = $isPaid
+        ? route('login', ['redirect' => url()->current(), 'autopay' => 1])
+        : route('login', ['redirect' => url()->current()]);
+
     $priceLabel = $isFree ? 'Gratuit' : ($isPaid ? number_format($book->price,0,',',' ').' FCFA' : 'Abonnement');
 
-    // ✅ Login revient ici + déclenche auto-paiement si livre payant
-    $loginUrl = route('login', [
-        'redirect' => url()->current(),
-        'autopay'  => $isPaid ? 1 : 0,
-        'book_id'  => $isPaid ? $book->id : null,
-    ]);
+    // ✅ auto pay only if paid + logged in + not purchased
+    $shouldAutoPay = request()->boolean('autopay') && auth()->check() && $isPaid && !$hasPurchase;
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 py-10">
 
-    {{-- BREADCRUMB --}}
+    {{-- breadcrumb --}}
     <div class="mb-8">
         <div class="flex flex-wrap items-center gap-2 text-sm text-slate-500">
             <a href="{{ route('books.index') }}" class="hover:text-[var(--faso-orange)] inline-flex items-center gap-1">
@@ -113,13 +102,6 @@
                         <i data-lucide="calendar" class="w-4 h-4"></i>
                         Publié le {{ optional($book->published_at)->format('d M Y') ?? '—' }}
                     </span>
-
-                    @if($category)
-                        <span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100">
-                            <i data-lucide="grid-3x3" class="w-4 h-4"></i>
-                            {{ $category->name }}
-                        </span>
-                    @endif
                 </div>
             </div>
 
@@ -130,6 +112,11 @@
                        class="w-4 h-4 {{ $isFree ? '' : ($isPaid ? 'text-[var(--faso-orange)]' : 'text-indigo-600') }}"></i>
                     {{ $priceLabel }}
                 </span>
+
+                <span class="inline-flex items-center gap-2 px-4 py-2 rounded-2xl text-[12px] font-bold bg-slate-100 text-slate-700">
+                    <i data-lucide="bookmark" class="w-4 h-4"></i>
+                    {{ strtoupper($book->format ?? 'PDF') }}
+                </span>
             </div>
         </div>
     </div>
@@ -138,45 +125,46 @@
 
         {{-- LEFT --}}
         <div class="lg:col-span-4 space-y-5">
-
             <div class="relative overflow-hidden rounded-3xl shadow-xl border border-slate-100 bg-white">
                 <img src="{{ $coverUrl }}" alt="{{ $book->title }}" class="w-full object-cover aspect-[3/4]">
                 <div class="absolute inset-x-0 bottom-0 p-4">
-                    <span class="inline-flex items-center gap-2 px-3 py-2 rounded-2xl text-[12px] font-extrabold shadow-lg shadow-black/10
-                                 {{ $isFree ? 'bg-emerald-500 text-white' : 'bg-white/90 text-slate-900' }}
-                                 backdrop-blur border border-white/60">
-                        <i data-lucide="{{ $isFree ? 'gift' : ($isPaid ? 'wallet' : 'crown') }}"
-                           class="w-4 h-4 {{ $isFree ? '' : ($isPaid ? 'text-[var(--faso-orange)]' : 'text-indigo-600') }}"></i>
-                        {{ $priceLabel }}
-                    </span>
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="inline-flex items-center gap-2 px-3 py-2 rounded-2xl text-[12px] font-extrabold shadow-lg shadow-black/10
+                                     {{ $isFree ? 'bg-emerald-500 text-white' : 'bg-white/90 text-slate-900' }}
+                                     backdrop-blur border border-white/60">
+                            <i data-lucide="{{ $isFree ? 'gift' : ($isPaid ? 'wallet' : 'crown') }}"
+                               class="w-4 h-4 {{ $isFree ? '' : ($isPaid ? 'text-[var(--faso-orange)]' : 'text-indigo-600') }}"></i>
+                            {{ $priceLabel }}
+                        </span>
+
+                        <span class="inline-flex items-center gap-2 px-3 py-2 rounded-2xl text-[12px] font-bold bg-black/45 text-white backdrop-blur">
+                            <i data-lucide="file" class="w-4 h-4"></i>
+                            {{ strtoupper($book->format ?? 'PDF') }}
+                        </span>
+                    </div>
                 </div>
             </div>
 
             <div class="glass rounded-3xl p-5 shadow-sm space-y-4">
-
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="text-sm font-extrabold text-slate-900">Accès</p>
-                        <p class="text-xs text-slate-500 mt-0.5">Lecture disponible selon ton accès.</p>
+                        <p class="text-sm font-extrabold text-slate-900">Accès & lecture</p>
+                        <p class="text-xs text-slate-500 mt-0.5">Votre accès est activé après validation du paiement.</p>
                     </div>
+
+                    @if($isFree)
+                        <span class="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-[11px] font-extrabold">FREE</span>
+                    @elseif($isPaid)
+                        <span class="px-2.5 py-1 rounded-full bg-orange-100 text-[var(--faso-orange)] text-[11px] font-extrabold">PAYANT</span>
+                    @else
+                        <span class="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 text-[11px] font-extrabold">ABONN.</span>
+                    @endif
                 </div>
 
                 <div class="space-y-3">
 
                     @auth
-
-                        {{-- ✅ si paiement en cours et checkout_url existe => bouton "Continuer le paiement" --}}
-                        @if(!$canRead && $isPaid && $hasPendingPurchase && $pendingCheckoutUrl)
-                            <a href="{{ $pendingCheckoutUrl }}"
-                               class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
-                                      bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
-                                <i data-lucide="external-link" class="w-5 h-5"></i>
-                                Continuer le paiement
-                            </a>
-                        @endif
-
                         @if($canRead)
-
                             @if($book->pdf_file)
                                 <a href="{{ route('read.book', ['slug' => $book->slug]) }}"
                                    class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
@@ -195,16 +183,23 @@
                                 </a>
                             @endif
 
+                            @if(!$book->pdf_file && !$book->audio_file)
+                                <div class="w-full px-5 py-3 rounded-2xl bg-slate-50 border border-slate-200 text-slate-600 text-sm">
+                                    Aucun fichier disponible pour ce livre.
+                                </div>
+                            @endif
                         @else
-
                             @if($isPaid)
-                                {{-- bouton payer --}}
-                                @if(!$hasPendingPurchase)
+                                @if($hasPendingPurchase)
+                                    <div class="w-full px-5 py-3 rounded-2xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+                                        Paiement en cours… Rafraîchissez la page dans quelques secondes.
+                                    </div>
+                                @else
                                     <button type="button" data-book-id="{{ $book->id }}"
-                                            class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
-                                                   bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
+                                        class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
+                                               bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
                                         <i data-lucide="credit-card" class="w-5 h-5"></i>
-                                        Acheter maintenant
+                                        Payer maintenant
                                     </button>
                                 @endif
                             @elseif($isSub)
@@ -215,125 +210,113 @@
                                     Voir les abonnements
                                 </a>
                             @endif
-
                         @endif
-
                     @else
-                        {{-- ✅ Login + auto-pay après connexion si payant --}}
                         <a href="{{ $loginUrl }}"
                            class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
                                   bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
                             <i data-lucide="lock" class="w-5 h-5"></i>
-                            Se connecter
+                            Se connecter pour continuer
                         </a>
                     @endauth
-                </div>
-
-                <div class="pt-2 border-t border-slate-200/60">
-                    <p class="text-xs font-semibold text-slate-700 mb-2">Formats</p>
-                    <div class="flex flex-wrap gap-2">
-                        @if($book->pdf_file)
-                            <span class="px-3 py-1 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center gap-1">
-                                <i data-lucide="file-text" class="w-4 h-4"></i> PDF
-                            </span>
-                        @endif
-                        @if($book->audio_file)
-                            <span class="px-3 py-1 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold inline-flex items-center gap-1">
-                                <i data-lucide="headphones" class="w-4 h-4"></i> Audio
-                            </span>
-                        @endif
-                    </div>
                 </div>
             </div>
         </div>
 
         {{-- RIGHT --}}
         <div class="lg:col-span-8 space-y-6">
-
             <div class="bg-white border border-slate-100 rounded-3xl p-6 sm:p-8 shadow-sm">
-                <p class="text-xs font-semibold text-slate-500">À propos</p>
+                <p class="text-xs font-semibold text-slate-500">À propos du livre</p>
                 <h2 class="text-xl font-extrabold text-slate-900 mt-1">Description</h2>
-
                 <div class="mt-4 text-slate-700 text-sm leading-relaxed">
                     {!! nl2br(e($book->description)) !!}
                 </div>
             </div>
 
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold">Auteur</p>
+                    <p class="mt-1 font-extrabold text-slate-900">{{ optional($book->author)->name ?? 'Auteur inconnu' }}</p>
+                </div>
+                <div class="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold">Catégorie</p>
+                    <p class="mt-1 font-extrabold text-slate-900">{{ $category ? $category->name : '—' }}</p>
+                </div>
+                <div class="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm">
+                    <p class="text-xs text-slate-500 font-semibold">Accès</p>
+                    <p class="mt-1 font-extrabold text-slate-900">{{ $isFree ? 'Gratuit' : ($isPaid ? 'Payant' : 'Abonnement') }}</p>
+                </div>
+            </div>
+
+            @if(isset($related) && $related->count())
+                <section class="mt-6">
+                    <h2 class="text-xl font-extrabold text-slate-900 flex items-center gap-2 mb-4">
+                        <i data-lucide="sparkles" class="w-6 h-6 text-[var(--faso-orange)]"></i>
+                        Livres similaires
+                    </h2>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5 lg:gap-7">
+                        @foreach($related as $sim)
+                            @php
+                                $simCover = $sim->cover ? asset('storage/'.$sim->cover) : asset('images/placeholder-book.jpg');
+                            @endphp
+                            <a href="{{ route('books.show', $sim->slug) }}"
+                               class="group relative bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm
+                                      hover:shadow-xl hover:-translate-y-1 transition">
+                                <img src="{{ $simCover }}" alt="{{ $sim->title }}" class="w-full aspect-[3/4] object-cover">
+                                <div class="p-4">
+                                    <h3 class="font-extrabold text-[13px] sm:text-sm text-slate-900 leading-snug clamp-2">{{ $sim->title }}</h3>
+                                    <p class="text-[11px] text-slate-500 truncate mt-1">{{ optional($sim->author)->name ?? 'Auteur inconnu' }}</p>
+                                </div>
+                            </a>
+                        @endforeach
+                    </div>
+                </section>
+            @endif
         </div>
     </div>
-
-    {{-- RELATED --}}
-    @if(isset($related) && $related->count())
-        <section class="mt-16">
-            <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2 mb-6">
-                <i data-lucide="sparkles" class="w-6 h-6 text-[var(--faso-orange)]"></i>
-                Livres similaires
-            </h2>
-
-            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5 lg:gap-7">
-                @foreach($related as $sim)
-                    @php
-                        $simCover = $sim->cover ? asset('storage/'.$sim->cover) : asset('images/placeholder-book.jpg');
-                    @endphp
-                    <a href="{{ route('books.show', $sim->slug) }}"
-                       class="group bg-white border border-slate-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 transition">
-                        <img src="{{ $simCover }}" alt="{{ $sim->title }}" loading="lazy"
-                             class="w-full aspect-[3/4] object-cover group-hover:scale-[1.03] transition duration-300">
-                        <div class="p-4">
-                            <h3 class="font-extrabold text-[13px] sm:text-sm text-slate-900 leading-snug clamp-2">{{ $sim->title }}</h3>
-                            <p class="text-[11px] text-slate-500 mt-2 truncate">
-                                {{ optional($sim->author)->name ?? 'Auteur inconnu' }}
-                            </p>
-                        </div>
-                    </a>
-                @endforeach
-            </div>
-        </section>
-    @endif
-
 </div>
 
-{{-- JS Paiement livre --}}
 @auth
 <script>
+async function startBookPayment(bookId) {
+    const res = await fetch("{{ route('pay.book') }}", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": "{{ csrf_token() }}",
+            "Accept": "application/json",
+        },
+        body: JSON.stringify({ book_id: parseInt(bookId, 10) }),
+    });
+
+    const data = await res.json();
+
+    if (data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+    }
+
+    alert(data.message ?? "Impossible de générer le paiement.");
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // click manual
     document.querySelectorAll('.pay-book-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const bookId = btn.getAttribute('data-book-id');
-
-            const original = btn.innerHTML;
             btn.disabled = true;
-            btn.classList.add('opacity-80', 'cursor-not-allowed');
-            btn.innerHTML = `Chargement...`;
-
-            try {
-                const res = await fetch("{{ route('pay.book') }}", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": "{{ csrf_token() }}",
-                        "Accept": "application/json",
-                    },
-                    body: JSON.stringify({ book_id: parseInt(bookId, 10) }),
-                });
-
-                const data = await res.json();
-
-                if (data.checkout_url) {
-                    window.location.href = data.checkout_url;
-                    return;
-                }
-
-                alert(data.message ?? "Impossible de générer le paiement.");
-            } catch (e) {
-                alert("Erreur réseau. Réessaie.");
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove('opacity-80', 'cursor-not-allowed');
-                btn.innerHTML = original;
-            }
+            try { await startBookPayment(bookId); }
+            catch(e){ alert("Erreur réseau. Réessaie."); }
+            finally { btn.disabled = false; }
         });
     });
+
+    // ✅ AUTO PAY after login
+    const autoPay = {{ $shouldAutoPay ? 'true' : 'false' }};
+    if (autoPay) {
+        startBookPayment({{ $book->id }});
+    }
 });
 </script>
 @endauth

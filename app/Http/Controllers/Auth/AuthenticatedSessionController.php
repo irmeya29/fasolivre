@@ -11,18 +11,15 @@ use Illuminate\View\View;
 
 class AuthenticatedSessionController extends Controller
 {
-    /**
-     * Display the login view.
-     */
     public function create(Request $request): View|RedirectResponse
     {
-        // ✅ Si on arrive avec ?redirect=/books/xxx on le stocke comme intended
+        // Si on arrive avec ?redirect=/books/xxx, on force l'intended
         $redirect = (string) $request->query('redirect', '');
         if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
             $request->session()->put('url.intended', $redirect);
         }
 
-        // ✅ Si déjà connecté → on part vers intended (sinon fallback)
+        // Déjà connecté -> va vers intended sinon books.index
         if (Auth::check()) {
             return redirect()->intended(route('books.index'));
         }
@@ -30,27 +27,20 @@ class AuthenticatedSessionController extends Controller
         return view('auth.login');
     }
 
-    /**
-     * Handle an incoming authentication request.
-     */
     public function store(LoginRequest $request): RedirectResponse
     {
-        // ✅ Si on POST un redirect, on force intended (safe)
-        $redirect = (string) $request->input('redirect', '');
-        if ($redirect !== '' && $this->isSafeRedirect($redirect)) {
-            $request->session()->put('url.intended', $redirect);
+        // Si le form contient redirect, on force l'intended
+        if ($request->filled('redirect') && $this->isSafeRedirect($request->input('redirect'))) {
+            $request->session()->put('url.intended', $request->input('redirect'));
         }
 
         $request->authenticate();
         $request->session()->regenerate();
 
-        // ✅ intended d'abord, sinon books.index
+        // Va vers intended sinon books.index
         return redirect()->intended(route('books.index'));
     }
 
-    /**
-     * Destroy an authenticated session.
-     */
     public function destroy(Request $request): RedirectResponse
     {
         Auth::guard('web')->logout();
@@ -64,14 +54,12 @@ class AuthenticatedSessionController extends Controller
     private function isSafeRedirect(string $url): bool
     {
         // Autorise URL relative: /books/xxx
-        if (str_starts_with($url, '/')) {
-            return true;
-        }
+        if (str_starts_with($url, '/')) return true;
 
         // Autorise URL absolue uniquement si même host que APP_URL
         $host = parse_url($url, PHP_URL_HOST);
         $appHost = parse_url(config('app.url'), PHP_URL_HOST);
 
-        return !empty($host) && !empty($appHost) && strtolower($host) === strtolower($appHost);
+        return $host && $appHost && strtolower($host) === strtolower($appHost);
     }
 }
