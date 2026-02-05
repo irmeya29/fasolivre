@@ -14,48 +14,51 @@ class EnsureBookAccess
     public function handle(Request $request, Closure $next)
     {
         $user = Auth::user();
-        $slug = $request->route('slug');
+        $slug = (string) $request->route('slug');
+
+        // sécurité
+        if (!$user) {
+            return redirect()->route('login', ['redirect' => url()->current()]);
+        }
 
         $book = Book::where('slug', $slug)->firstOrFail();
 
-        // Ton model utilise access_type
-        // Valeurs actuelles: free | paid
-        // On ajoute: subscription (pour les livres accessibles via abonnement)
-        $type = $book->access_type;
-
         // 1) Gratuit => OK
-        if ($type === 'free') {
+        if ($book->access_type === 'free') {
             return $next($request);
         }
 
-        // 2) Achat individuel (paid) => doit avoir acheté
+        // Achat individuel (validé uniquement si purchased_at non null)
         $hasPurchase = BookPurchase::where('user_id', $user->id)
             ->where('book_id', $book->id)
             ->whereNotNull('purchased_at')
             ->exists();
 
-        if ($type === 'paid' && $hasPurchase) {
-            return $next($request);
+        // 2) Livre payant => achat requis
+        if ($book->access_type === 'paid') {
+            if ($hasPurchase) return $next($request);
+
+            // ✅ au lieu d'aller sur account, on renvoie vers la page du livre
+            return redirect()->route('books.show', $book->slug)
+                ->with('error', "Ce livre nécessite un achat.");
         }
 
-        // 3) Abonnement => si abonnement actif, accès à tous les livres "subscription"
-        $hasActiveSub = Subscription::where('user_id', $user->id)
-            ->where('status', 'active')
-            ->whereNotNull('ends_at')
-            ->where('ends_at', '>', now())
-            ->exists();
+        // 3) Abonnement => abonnement actif OU achat individuel (si tu autorises)
+        if ($book->access_type === 'subscription') {
+            $hasActiveSub = Subscription::where('user_id', $user->id)
+                ->where('status', 'active')
+                ->whereNotNull('ends_at')
+                ->where('ends_at', '>', now())
+                ->exists();
 
-        if ($type === 'subscription' && $hasActiveSub) {
-            return $next($request);
+            if ($hasActiveSub || $hasPurchase) return $next($request);
+
+            return redirect()->route('books.show', $book->slug)
+                ->with('error', "Ce livre nécessite un abonnement.");
         }
 
-        // Optionnel (pratique) :
-        // si tu autorises aussi l'achat même quand le livre est "subscription"
-        if ($hasPurchase) {
-            return $next($request);
-        }
-
-        return redirect()->route('account.index')
-            ->with('error', "Accès refusé : livre payant ou abonnement requis.");
+        // Valeur inconnue
+        return redirect()->route('books.show', $book->slug)
+            ->with('error', "Accès non autorisé.");
     }
 }
