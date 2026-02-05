@@ -25,32 +25,33 @@
 </style>
 
 @php
-    /**
-     * ✅ IMPORTANT :
-     * - On ne considère PLUS "BookPurchase purchased_at NULL" comme "pending".
-     * - On considère "pending" seulement si un Payment PENDING existe.
-     *
-     * ✅ Cette vue suppose que le controller show() passe:
-     * $isFree, $isPaid, $isSub, $canRead, $loginUrl, $shouldAutoPay,
-     * $pendingPayment, $failedPayment, $hasActiveSub, $hasPurchase
-     *
-     * Si tu n'as pas encore modifié le controller, fais-le (je te l'ai donné).
-     */
-
     $user = auth()->user();
     $category = $book->category;
     $coverUrl = $book->cover ? asset('storage/'.$book->cover) : asset('images/placeholder-book.jpg');
 
     $priceLabel = $isFree ? 'Gratuit' : ($isPaid ? number_format($book->price,0,',',' ').' FCFA' : 'Abonnement');
 
+    // Paiement PENDING/FAILED venant du controller
     $hasPendingPurchase = !empty($pendingPayment);
     $hasFailedPurchase  = !empty($failedPayment);
 
-    // ✅ si pending existe mais pas de checkout_url, on affiche quand même un message
     $pendingCheckoutUrl = $pendingPayment->checkout_url ?? null;
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 py-10">
+
+    {{-- Flash messages --}}
+    @if(session('error'))
+        <div class="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-rose-800">
+            {{ session('error') }}
+        </div>
+    @endif
+
+    @if(session('success'))
+        <div class="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
+            {{ session('success') }}
+        </div>
+    @endif
 
     {{-- breadcrumb --}}
     <div class="mb-8">
@@ -146,6 +147,8 @@
 
                     @auth
                         @if($canRead)
+
+                            {{-- ✅ BOUTONS LECTURE --}}
                             @if($book->pdf_file)
                                 <a href="{{ route('read.book', ['slug' => $book->slug]) }}"
                                    class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
@@ -169,10 +172,12 @@
                                     Aucun fichier disponible pour ce livre.
                                 </div>
                             @endif
+
                         @else
+
+                            {{-- ✅ ACCÈS NON OK --}}
                             @if($isPaid)
 
-                                {{-- ✅ PENDING réel (Payment.status = PENDING) --}}
                                 @if($hasPendingPurchase)
                                     <div class="w-full px-5 py-3 rounded-2xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
                                         Paiement en cours…
@@ -194,7 +199,6 @@
                                         </button>
                                     @endif
 
-                                {{-- ✅ FAILED (affiche erreur + réessayer) --}}
                                 @elseif($hasFailedPurchase)
                                     <div class="w-full px-5 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm">
                                         Paiement échoué. Vous pouvez réessayer.
@@ -207,7 +211,6 @@
                                         Réessayer le paiement
                                     </button>
 
-                                {{-- ✅ Aucun paiement en cours => bouton payer --}}
                                 @else
                                     <button type="button" data-book-id="{{ $book->id }}"
                                         class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
@@ -225,6 +228,7 @@
                                     Voir les abonnements
                                 </a>
                             @endif
+
                         @endif
                     @else
                         <a href="{{ $loginUrl }}"
@@ -297,7 +301,7 @@
 async function startBookPayment(bookId) {
     const res = await fetch("{{ route('pay.book') }}", {
         method: "POST",
-        credentials: "same-origin", // ✅ indispensable pour envoyer la session/cookies
+        credentials: "same-origin", // ✅ envoie cookies de session
         headers: {
             "Content-Type": "application/json",
             "X-CSRF-TOKEN": "{{ csrf_token() }}",
@@ -306,24 +310,19 @@ async function startBookPayment(bookId) {
         body: JSON.stringify({ book_id: parseInt(bookId, 10) }),
     });
 
-    // ✅ parse robuste (parfois Laravel renvoie HTML en prod)
     const text = await res.text();
     let data = {};
     try { data = JSON.parse(text); } catch (e) {}
 
-    // ✅ gestion des codes HTTP
     if (!res.ok) {
         if (res.status === 401) {
-            // session non reconnue -> login
             window.location.href = "{{ route('login', ['redirect' => url()->current(), 'autopay' => 1]) }}";
             return;
         }
-
         if (res.status === 419) {
             alert("Session expirée. Rafraîchis la page puis réessaie.");
             return;
         }
-
         console.error("PAY BOOK ERROR", res.status, text);
         alert((data.message ?? "Impossible de générer le paiement.") + " (HTTP " + res.status + ")");
         return;
@@ -338,7 +337,6 @@ async function startBookPayment(bookId) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // click manual
     document.querySelectorAll('.pay-book-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const bookId = btn.getAttribute('data-book-id');
@@ -349,19 +347,17 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ✅ AUTO PAY after login
     const autoPay = {{ $shouldAutoPay ? 'true' : 'false' }};
     if (autoPay) {
         startBookPayment({{ $book->id }});
 
-        // ✅ évite de relancer à chaque refresh/back
+        // ✅ évite relance après refresh/back
         const url = new URL(window.location.href);
         url.searchParams.delete('autopay');
         window.history.replaceState({}, '', url.toString());
     }
 });
 </script>
-
 @endauth
 
 @endsection

@@ -4,44 +4,53 @@ namespace App\Http\Controllers\Front;
 
 use App\Http\Controllers\Controller;
 use App\Models\Book;
+use App\Models\BookPurchase;
+use App\Models\Subscription;
+use Illuminate\Support\Facades\Auth;
 
 class ReaderController extends Controller
 {
-    /**
-     * Affiche le lecteur PDF du livre.
-     */
     public function read($slug)
     {
         $book = Book::where('slug', $slug)->firstOrFail();
-        $user = auth()->user();
+        $user = Auth::user();
 
-        // Vérifier si le livre est déjà dans la bibliothèque
-        $userBook = $user->books()->where('book_id', $book->id)->first();
-
-        // 📌 Si le livre n’est PAS dans la bibliothèque
-        if (!$userBook) {
-
-            // 👉 Si livre GRATUIT → on l’ajoute automatiquement
-            if ($book->access_type === 'free') {
-
-                $user->books()->attach($book->id, [
-                    'progress'    => 0,
-                    'is_favorite' => false,
-                ]);
-
-                // On recharge la relation pivot
-                $userBook = $user->books()->where('book_id', $book->id)->first();
-            }
-
-            // 👉 Livre PAYANT ou SOUS ABONNEMENT → accès refusé
-            else {
-                return redirect()
-                    ->route('books.show', $book->slug)
-                    ->with('error', "Vous devez d'abord acheter ou débloquer ce livre pour y accéder.");
-            }
+        // sécurité
+        if (!$user) {
+            return redirect()->route('login', ['redirect' => url()->current()]);
         }
 
-        // 🔥 Progression
+        // ✅ Vérifie droit d'accès (FREE / achat / abonnement)
+        $hasPurchase = BookPurchase::where('user_id', $user->id)
+            ->where('book_id', $book->id)
+            ->whereNotNull('purchased_at')
+            ->exists();
+
+        $hasActiveSub = Subscription::where('user_id', $user->id)
+            ->where('status', 'active')
+            ->whereNotNull('ends_at')
+            ->where('ends_at', '>', now())
+            ->exists();
+
+        $canAccess = $book->access_type === 'free'
+            || ($book->access_type === 'paid' && $hasPurchase)
+            || ($book->access_type === 'subscription' && ($hasActiveSub || $hasPurchase));
+
+        if (!$canAccess) {
+            return redirect()->route('books.show', $book->slug)
+                ->with('error', "Vous devez d'abord acheter ou débloquer ce livre pour y accéder.");
+        }
+
+        // ✅ Assure la présence dans la bibliothèque (pivot book_user)
+        $userBook = $user->books()->where('book_id', $book->id)->first();
+        if (!$userBook) {
+            $user->books()->attach($book->id, [
+                'progress'    => 0,
+                'is_favorite' => false,
+            ]);
+            $userBook = $user->books()->where('book_id', $book->id)->first();
+        }
+
         $progress = $userBook->pivot->progress ?? 0;
 
         return view('front.read.pdf', [
@@ -51,35 +60,42 @@ class ReaderController extends Controller
         ]);
     }
 
-
-
-    /**
-     * Affiche le lecteur AUDIO du livre.
-     */
     public function audio($slug)
     {
         $book = Book::where('slug', $slug)->firstOrFail();
-        $user = auth()->user();
+        $user = Auth::user();
 
-        // Vérifier si le livre est déjà dans la bibliothèque
+        if (!$user) {
+            return redirect()->route('login', ['redirect' => url()->current()]);
+        }
+
+        $hasPurchase = BookPurchase::where('user_id', $user->id)
+            ->where('book_id', $book->id)
+            ->whereNotNull('purchased_at')
+            ->exists();
+
+        $hasActiveSub = Subscription::where('user_id', $user->id)
+            ->where('status', 'active')
+            ->whereNotNull('ends_at')
+            ->where('ends_at', '>', now())
+            ->exists();
+
+        $canAccess = $book->access_type === 'free'
+            || ($book->access_type === 'paid' && $hasPurchase)
+            || ($book->access_type === 'subscription' && ($hasActiveSub || $hasPurchase));
+
+        if (!$canAccess) {
+            return redirect()->route('books.show', $book->slug)
+                ->with('error', "Vous devez débloquer ce livre pour écouter l’audio.");
+        }
+
         $userBook = $user->books()->where('book_id', $book->id)->first();
-
         if (!$userBook) {
-            if ($book->access_type === 'free') {
-
-                // Ajouter automatiquement les gratuits
-                $user->books()->attach($book->id, [
-                    'progress'    => 0,
-                    'is_favorite' => false,
-                ]);
-
-                $userBook = $user->books()->where('book_id', $book->id)->first();
-            } else {
-
-                return redirect()
-                    ->route('books.show', $book->slug)
-                    ->with('error', "Vous devez débloquer ce livre pour écouter l’audio.");
-            }
+            $user->books()->attach($book->id, [
+                'progress'    => 0,
+                'is_favorite' => false,
+            ]);
+            $userBook = $user->books()->where('book_id', $book->id)->first();
         }
 
         $progress = $userBook->pivot->progress ?? 0;
