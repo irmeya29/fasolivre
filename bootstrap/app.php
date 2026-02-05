@@ -11,10 +11,18 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+
+        // ✅ Alias middleware
         $middleware->alias([
             'book.access' => \App\Http\Middleware\EnsureBookAccess::class,
+        ]);
+
+        // ✅ IMPORTANT: webhook YengaPay ne doit pas être bloqué par CSRF
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/yengapay',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
-    })->create();
+    })
+    ->create();
