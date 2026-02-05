@@ -25,48 +25,29 @@
 </style>
 
 @php
+    /**
+     * ✅ IMPORTANT :
+     * - On ne considère PLUS "BookPurchase purchased_at NULL" comme "pending".
+     * - On considère "pending" seulement si un Payment PENDING existe.
+     *
+     * ✅ Cette vue suppose que le controller show() passe:
+     * $isFree, $isPaid, $isSub, $canRead, $loginUrl, $shouldAutoPay,
+     * $pendingPayment, $failedPayment, $hasActiveSub, $hasPurchase
+     *
+     * Si tu n'as pas encore modifié le controller, fais-le (je te l'ai donné).
+     */
+
     $user = auth()->user();
     $category = $book->category;
     $coverUrl = $book->cover ? asset('storage/'.$book->cover) : asset('images/placeholder-book.jpg');
 
-    $hasPurchase = false;
-    $hasPendingPurchase = false;
-    $hasActiveSub = false;
-
-    if ($user) {
-        $purchase = \App\Models\BookPurchase::where('user_id', $user->id)
-            ->where('book_id', $book->id)
-            ->first();
-
-        $hasPurchase = $purchase && !is_null($purchase->purchased_at);
-        $hasPendingPurchase = $purchase && is_null($purchase->purchased_at);
-
-        $hasActiveSub = \App\Models\Subscription::where('user_id', $user->id)
-            ->where('status', 'active')
-            ->whereNotNull('ends_at')
-            ->where('ends_at', '>', now())
-            ->exists();
-    }
-
-    $isFree = $book->access_type === 'free';
-    $isPaid = $book->access_type === 'paid';
-    $isSub  = $book->access_type === 'subscription';
-
-    $canRead =
-        $isFree
-        || ($isPaid && $hasPurchase)
-        || ($isSub && $hasActiveSub)
-        || $hasPurchase;
-
-    // ✅ after login, return to book page + autoPay=1 for paid books
-    $loginUrl = $isPaid
-        ? route('login', ['redirect' => url()->current(), 'autopay' => 1])
-        : route('login', ['redirect' => url()->current()]);
-
     $priceLabel = $isFree ? 'Gratuit' : ($isPaid ? number_format($book->price,0,',',' ').' FCFA' : 'Abonnement');
 
-    // ✅ auto pay only if paid + logged in + not purchased
-    $shouldAutoPay = request()->boolean('autopay') && auth()->check() && $isPaid && !$hasPurchase;
+    $hasPendingPurchase = !empty($pendingPayment);
+    $hasFailedPurchase  = !empty($failedPayment);
+
+    // ✅ si pending existe mais pas de checkout_url, on affiche quand même un message
+    $pendingCheckoutUrl = $pendingPayment->checkout_url ?? null;
 @endphp
 
 <div class="max-w-7xl mx-auto px-4 py-10">
@@ -190,10 +171,43 @@
                             @endif
                         @else
                             @if($isPaid)
+
+                                {{-- ✅ PENDING réel (Payment.status = PENDING) --}}
                                 @if($hasPendingPurchase)
                                     <div class="w-full px-5 py-3 rounded-2xl bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
-                                        Paiement en cours… Rafraîchissez la page dans quelques secondes.
+                                        Paiement en cours…
                                     </div>
+
+                                    @if($pendingCheckoutUrl)
+                                        <a href="{{ $pendingCheckoutUrl }}"
+                                           class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
+                                                  bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
+                                            <i data-lucide="external-link" class="w-5 h-5"></i>
+                                            Reprendre le paiement
+                                        </a>
+                                    @else
+                                        <button type="button" data-book-id="{{ $book->id }}"
+                                            class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
+                                                   bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
+                                            <i data-lucide="credit-card" class="w-5 h-5"></i>
+                                            Continuer
+                                        </button>
+                                    @endif
+
+                                {{-- ✅ FAILED (affiche erreur + réessayer) --}}
+                                @elseif($hasFailedPurchase)
+                                    <div class="w-full px-5 py-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm">
+                                        Paiement échoué. Vous pouvez réessayer.
+                                    </div>
+
+                                    <button type="button" data-book-id="{{ $book->id }}"
+                                        class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
+                                               bg-slate-900 text-white font-semibold hover:bg-slate-800 hover:shadow-lg">
+                                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                                        Réessayer le paiement
+                                    </button>
+
+                                {{-- ✅ Aucun paiement en cours => bouton payer --}}
                                 @else
                                     <button type="button" data-book-id="{{ $book->id }}"
                                         class="pay-book-btn w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
@@ -202,6 +216,7 @@
                                         Payer maintenant
                                     </button>
                                 @endif
+
                             @elseif($isSub)
                                 <a href="{{ route('plans.page') }}"
                                    class="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
@@ -290,7 +305,8 @@ async function startBookPayment(bookId) {
         body: JSON.stringify({ book_id: parseInt(bookId, 10) }),
     });
 
-    const data = await res.json();
+    let data = {};
+    try { data = await res.json(); } catch (e) {}
 
     if (data.checkout_url) {
         window.location.href = data.checkout_url;
@@ -316,6 +332,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const autoPay = {{ $shouldAutoPay ? 'true' : 'false' }};
     if (autoPay) {
         startBookPayment({{ $book->id }});
+
+        // ✅ évite de relancer à chaque refresh/back
+        const url = new URL(window.location.href);
+        url.searchParams.delete('autopay');
+        window.history.replaceState({}, '', url.toString());
     }
 });
 </script>
