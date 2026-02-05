@@ -12,14 +12,10 @@ use Illuminate\Support\Str;
 
 class PaymentController extends Controller
 {
-    // Statuts possibles côté YengaPay (à harmoniser)
     private const SUCCESS = ['DONE', 'SUCCESS', 'SUCCESSFUL', 'PAID', 'COMPLETED', 'APPROVED', 'OK'];
     private const PENDING = ['PENDING', 'INIT', 'INITIATED', 'CREATED', 'PROCESSING', 'IN_PROGRESS', 'WAITING'];
     private const FAILED  = ['FAILED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'REFUSED', 'REJECTED'];
 
-    /**
-     * Crée un paiement pour un livre payant et renvoie checkout_url.
-     */
     public function createBookPayment(Request $request, YengaPayService $yenga)
     {
         $user = $request->user();
@@ -34,7 +30,6 @@ class PaymentController extends Controller
             return response()->json(['message' => "Ce livre n'est pas payant."], 422);
         }
 
-        // Déjà acheté ?
         $alreadyBought = BookPurchase::where('user_id', $user->id)
             ->where('book_id', $book->id)
             ->whereNotNull('purchased_at')
@@ -44,17 +39,15 @@ class PaymentController extends Controller
             return response()->json(['message' => 'Livre déjà acheté.'], 200);
         }
 
-        // Achat local (unique user+book)
         $purchase = BookPurchase::firstOrCreate(
             ['user_id' => $user->id, 'book_id' => $book->id],
             ['price' => (float) $book->price, 'currency' => 'XOF']
         );
 
-        // Paiement pending existant ?
         $existing = Payment::where('user_id', $user->id)
             ->where('payable_type', BookPurchase::class)
             ->where('payable_id', $purchase->id)
-            ->whereIn('status', self::PENDING)
+            ->whereIn('status', ['PENDING'])
             ->latest('id')
             ->first();
 
@@ -66,18 +59,13 @@ class PaymentController extends Controller
             ]);
         }
 
-        // Référence unique
-        $reference = 'BOOK-' . $book->id . '-' . $user->id . '-' . Str::upper(Str::random(10));
-
-        // ✅ IMPORTANT: mettre une redirectUrl avec reference => return() pourra retrouver le paiement
+        $reference   = 'BOOK-' . $book->id . '-' . $user->id . '-' . Str::upper(Str::random(10));
         $redirectUrl = route('payment.return', ['reference' => $reference], true);
 
-        // Payload YengaPay
         $payload = [
             'paymentAmount' => (int) $book->price,
-            'currency'      => 'XOF',
             'reference'     => $reference,
-            'redirectUrl'   => $redirectUrl, // ✅ clé souvent attendue côté YengaPay
+            'redirectUrl'   => $redirectUrl,
             'articles' => [[
                 'title'       => $book->title,
                 'description' => $book->description ? Str::limit($book->description, 180) : 'Achat de livre',
@@ -88,34 +76,36 @@ class PaymentController extends Controller
 
         $data = $yenga->createPaymentIntent($payload);
 
-        // Extraction champs robustes
         $intentId = $data['paymentIntentId'] ?? $data['id'] ?? null;
         $checkout = $data['checkoutPageUrlWithPaymentToken'] ?? $data['checkout_url'] ?? null;
 
         $statusRaw = $data['paymentStatus'] ?? $data['transactionStatus'] ?? $data['status'] ?? 'PENDING';
-        $status = strtoupper((string) $statusRaw);
-        if (in_array($status, self::SUCCESS, true)) $status = 'SUCCESS';
-        elseif (in_array($status, self::FAILED, true)) $status = 'FAILED';
-        elseif (!in_array($status, self::PENDING, true)) $status = 'PENDING';
+        $statusUp  = strtoupper((string) $statusRaw);
+
+        $mapped = 'PENDING';
+        if (in_array($statusUp, self::SUCCESS, true)) $mapped = 'SUCCESS';
+        elseif (in_array($statusUp, self::FAILED, true)) $mapped = 'FAILED';
 
         $payment = Payment::create([
-            'user_id'            => $user->id,
-            'payable_type'       => BookPurchase::class,
-            'payable_id'         => $purchase->id,
-            'provider'           => 'yengapay',
-            'provider_intent_id' => $intentId,
-            'reference'          => $reference,
-            'provider_project_id'=> (string) ($data['projectId'] ?? config('services.yengapay.project_id')),
-            'provider_group_id'  => (string) config('services.yengapay.organization_id'),
+            'user_id'             => $user->id,
+            'payable_type'        => BookPurchase::class,
+            'payable_id'          => $purchase->id,
+            'provider'            => 'yengapay',
+            'provider_intent_id'  => $intentId,
+            'reference'           => $reference,
+            'provider_project_id' => (string) ($data['projectId'] ?? config('services.yengapay.project_id')),
+            'provider_group_id'   => (string) config('services.yengapay.organization_id'),
 
-            'amount'             => (float) $book->price,
-            'fees'               => (float) ($data['paymentFees'] ?? 0),
-            'currency'           => (string) ($data['currency'] ?? 'XOF'),
+            // ✅ client paie les frais : amount reste PRIX LIVRE
+            'amount'              => (float) $book->price,
+            'fees'                => (float) ($data['paymentFees'] ?? 0),
+            'currency'            => (string) ($data['currency'] ?? 'XOF'),
 
-            'status'             => $status,
-            'token'              => $data['token'] ?? null,
-            'checkout_url'       => $checkout,
-            'provider_payload'   => $data,
+            'status'              => $mapped,
+            'token'               => $data['token'] ?? null,
+            'checkout_url'        => $checkout,
+            'provider_payload'    => $data,
+            'is_used'             => false,
         ]);
 
         $purchase->payment_id = $payment->id;
@@ -128,10 +118,6 @@ class PaymentController extends Controller
         ]);
     }
 
-    /**
-     * Retour utilisateur après paiement.
-     * Doit rediriger vers le livre, et activer l'achat si paiement OK.
-     */
     public function return(Request $request, YengaPayService $yenga)
     {
         $reference = (string) $request->query('reference', '');
@@ -146,14 +132,13 @@ class PaymentController extends Controller
             $payment = Payment::where('provider_intent_id', $intentId)->latest('id')->first();
         }
 
-        // Si on ne retrouve pas, page simple
         if (!$payment) {
             return view('front.pages.payment_return', [
                 'message' => 'Paiement reçu. Vérification en cours…'
             ]);
         }
 
-        // ✅ On tente de vérifier le statut distant (utile si webhook retardé)
+        // fallback: vérif distante (si webhook en retard)
         try {
             if ($payment->provider_intent_id) {
                 $remote = $yenga->getPaymentIntent($payment->provider_intent_id);
@@ -170,37 +155,36 @@ class PaymentController extends Controller
                 if (in_array($statusRemote, self::SUCCESS, true)) $mapped = 'SUCCESS';
                 elseif (in_array($statusRemote, self::FAILED, true)) $mapped = 'FAILED';
 
-                // Update local
                 DB::transaction(function () use ($payment, $remote, $mapped) {
-                    $payment = Payment::lockForUpdate()->find($payment->id);
-                    if (!$payment) return;
+                    $p = Payment::lockForUpdate()->find($payment->id);
+                    if (!$p) return;
 
-                    $payment->status = $mapped;
-                    $payment->provider_payload = $remote;
+                    $p->status = $mapped;
+                    $p->provider_payload = $remote;
 
-                    if ($mapped === 'SUCCESS' && !$payment->paid_at) {
-                        $payment->paid_at = now();
-                    }
-                    $payment->save();
+                    // fees update (optionnel)
+                    $p->fees = (float) (data_get($remote, 'paymentFees') ?? $p->fees ?? 0);
 
-                    // ✅ Activer l'achat (idempotent)
-                    if ($mapped === 'SUCCESS' && !$payment->is_used && $payment->payable_type === BookPurchase::class) {
-                        $purchase = BookPurchase::lockForUpdate()->find($payment->payable_id);
+                    if ($mapped === 'SUCCESS' && !$p->paid_at) $p->paid_at = now();
+                    $p->save();
+
+                    if ($mapped === 'SUCCESS' && !$p->is_used && $p->payable_type === BookPurchase::class) {
+                        $purchase = BookPurchase::lockForUpdate()->find($p->payable_id);
                         if ($purchase && !$purchase->purchased_at) {
                             $purchase->purchased_at = now();
-                            $purchase->payment_id = $payment->id;
+                            $purchase->payment_id = $p->id;
                             $purchase->save();
                         }
-                        $payment->is_used = true;
-                        $payment->save();
+                        $p->is_used = true;
+                        $p->save();
                     }
                 });
             }
         } catch (\Throwable $e) {
-            // on ignore, on ne bloque pas l’utilisateur
+            // ignore
         }
 
-        // ✅ Redirection finale vers le livre
+        // redirection finale
         if ($payment->payable_type === BookPurchase::class) {
             $purchase = BookPurchase::find($payment->payable_id);
             if ($purchase) {

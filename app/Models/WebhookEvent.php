@@ -1,5 +1,4 @@
 <?php
-// app/Models/WebhookEvent.php
 
 namespace App\Models;
 
@@ -11,6 +10,7 @@ class WebhookEvent extends Model
         'provider',
         'event_id',
         'event_hash',
+        'payload_hash',      // ✅ AJOUT
         'signature',
         'payload',
         'processing_status',

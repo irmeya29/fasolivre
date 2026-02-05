@@ -35,13 +35,14 @@ return [
         ],
     ],
 
-            'yengapay' => [
-        'api_key' => env('YENGAPAY_API_KEY'),
+         'yengapay' => [
+        'api_key'         => env('YENGAPAY_API_KEY'),
         'organization_id' => env('YENGAPAY_ORGANIZATION_ID', '10766201'),
-        'project_id' => env('YENGAPAY_PROJECT_ID', '58192'),
-        'webhook_secret' => env('YENGAPAY_WEBHOOK_SECRET'),
-        'base_url' => env('YENGAPAY_BASE_URL', 'https://api.yengapay.com/api/v1'),
-        ],
+        'project_id'      => env('YENGAPAY_PROJECT_ID', '58192'),
+        'webhook_secret'  => env('YENGAPAY_WEBHOOK_SECRET'),
+        'base_url'        => env('YENGAPAY_BASE_URL', 'https://api.yengapay.com/api/v1'),
+        'timeout'         => env('YENGAPAY_TIMEOUT', 20),
+    ],
 
 
 

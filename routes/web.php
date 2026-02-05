@@ -73,20 +73,15 @@ Route::get('/search/ajax', [SearchController::class, 'ajax'])->name('search.ajax
 | - /webhooks/yengapay = webhook
 */
 Route::get('/plans', [SubscriptionController::class, 'plans'])->name('plans.index');
-
-// ✅ Page UI abonnement
 Route::get('/abonnement', [SubscriptionController::class, 'plansPage'])->name('plans.page');
 
 Route::middleware('auth')->group(function () {
     Route::post('/pay/book', [PaymentController::class, 'createBookPayment'])->name('pay.book');
-
-    Route::post('/pay/subscription', [SubscriptionController::class, 'createSubscriptionPayment'])
-        ->name('pay.subscription');
-
+    Route::post('/pay/subscription', [SubscriptionController::class, 'createSubscriptionPayment'])->name('pay.subscription');
     Route::get('/payment/return', [PaymentController::class, 'return'])->name('payment.return');
 });
 
-// Webhook YengaPay (PAS d'auth)
+// webhook
 Route::post('/webhooks/yengapay', [YengaPayWebhookController::class, 'handle'])
     ->name('webhooks.yengapay');
 
