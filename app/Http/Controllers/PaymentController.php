@@ -17,106 +17,126 @@ class PaymentController extends Controller
     private const FAILED  = ['FAILED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'REFUSED', 'REJECTED'];
 
     public function createBookPayment(Request $request, YengaPayService $yenga)
-    {
-        $user = $request->user();
+{
+    $user = $request->user();
 
-        $validated = $request->validate([
-            'book_id' => ['required', 'integer', 'exists:books,id'],
-        ]);
+    $validated = $request->validate([
+        'book_id' => ['required', 'integer', 'exists:books,id'],
+    ]);
 
-        $book = Book::findOrFail($validated['book_id']);
+    $book = Book::findOrFail($validated['book_id']);
 
-        if ($book->access_type !== 'paid') {
-            return response()->json(['message' => "Ce livre n'est pas payant."], 422);
-        }
-
-        $alreadyBought = BookPurchase::where('user_id', $user->id)
-            ->where('book_id', $book->id)
-            ->whereNotNull('purchased_at')
-            ->exists();
-
-        if ($alreadyBought) {
-            return response()->json(['message' => 'Livre déjà acheté.'], 200);
-        }
-
-        $purchase = BookPurchase::firstOrCreate(
-            ['user_id' => $user->id, 'book_id' => $book->id],
-            ['price' => (float) $book->price, 'currency' => 'XOF']
-        );
-
-        $existing = Payment::where('user_id', $user->id)
-            ->where('payable_type', BookPurchase::class)
-            ->where('payable_id', $purchase->id)
-            ->whereIn('status', ['PENDING'])
-            ->latest('id')
-            ->first();
-
-        if ($existing && $existing->checkout_url) {
-            return response()->json([
-                'checkout_url' => $existing->checkout_url,
-                'reference'    => $existing->reference,
-                'payment_id'   => $existing->id,
-            ]);
-        }
-
-        $reference   = 'BOOK-' . $book->id . '-' . $user->id . '-' . Str::upper(Str::random(10));
-        $redirectUrl = route('payment.return', ['reference' => $reference], true);
-
-        $payload = [
-            'paymentAmount' => (int) $book->price,
-            'reference'     => $reference,
-            'redirectUrl'   => $redirectUrl,
-            'articles' => [[
-                'title'       => $book->title,
-                'description' => $book->description ? Str::limit($book->description, 180) : 'Achat de livre',
-                'pictures'    => $book->cover ? [asset('storage/' . $book->cover)] : [],
-                'price'       => (int) $book->price,
-            ]],
-        ];
-
-        $data = $yenga->createPaymentIntent($payload);
-
-        $intentId = $data['paymentIntentId'] ?? $data['id'] ?? null;
-        $checkout = $data['checkoutPageUrlWithPaymentToken'] ?? $data['checkout_url'] ?? null;
-
-        $statusRaw = $data['paymentStatus'] ?? $data['transactionStatus'] ?? $data['status'] ?? 'PENDING';
-        $statusUp  = strtoupper((string) $statusRaw);
-
-        $mapped = 'PENDING';
-        if (in_array($statusUp, self::SUCCESS, true)) $mapped = 'SUCCESS';
-        elseif (in_array($statusUp, self::FAILED, true)) $mapped = 'FAILED';
-
-        $payment = Payment::create([
-            'user_id'             => $user->id,
-            'payable_type'        => BookPurchase::class,
-            'payable_id'          => $purchase->id,
-            'provider'            => 'yengapay',
-            'provider_intent_id'  => $intentId,
-            'reference'           => $reference,
-            'provider_project_id' => (string) ($data['projectId'] ?? config('services.yengapay.project_id')),
-            'provider_group_id'   => (string) config('services.yengapay.organization_id'),
-
-            // ✅ client paie les frais : amount reste PRIX LIVRE
-            'amount'              => (float) $book->price,
-            'fees'                => (float) ($data['paymentFees'] ?? 0),
-            'currency'            => (string) ($data['currency'] ?? 'XOF'),
-
-            'status'              => $mapped,
-            'token'               => $data['token'] ?? null,
-            'checkout_url'        => $checkout,
-            'provider_payload'    => $data,
-            'is_used'             => false,
-        ]);
-
-        $purchase->payment_id = $payment->id;
-        $purchase->save();
-
-        return response()->json([
-            'checkout_url' => $payment->checkout_url,
-            'reference'    => $payment->reference,
-            'payment_id'   => $payment->id,
-        ]);
+    if ($book->access_type !== 'paid') {
+        return response()->json(['message' => "Ce livre n'est pas payant."], 422);
     }
+
+    // Déjà acheté ?
+    $alreadyBought = BookPurchase::where('user_id', $user->id)
+        ->where('book_id', $book->id)
+        ->whereNotNull('purchased_at')
+        ->exists();
+
+    if ($alreadyBought) {
+        return response()->json(['message' => 'Livre déjà acheté.'], 200);
+    }
+
+    $purchase = BookPurchase::firstOrCreate(
+        ['user_id' => $user->id, 'book_id' => $book->id],
+        ['price' => (float) $book->price, 'currency' => 'XOF']
+    );
+
+    // Paiement pending existant ?
+    $existing = Payment::where('user_id', $user->id)
+        ->where('payable_type', BookPurchase::class)
+        ->where('payable_id', $purchase->id)
+        ->where('status', 'PENDING')
+        ->latest('id')
+        ->first();
+
+    if ($existing && $existing->checkout_url) {
+        return response()->json([
+            'checkout_url' => $existing->checkout_url,
+            'reference'    => $existing->reference,
+            'payment_id'   => $existing->id,
+        ], 200);
+    }
+
+    $reference = 'BOOK-' . $book->id . '-' . $user->id . '-' . Str::upper(Str::random(10));
+
+    // ✅ redirectUrl propre
+    $redirectUrl = route('payment.return', ['reference' => $reference]);
+
+    // ✅ IMPORTANT : Pour réduire les 500 YengaPay, commence sans pictures si tu veux tester
+    $pictures = [];
+    if ($book->cover) {
+        $coverUrl = asset('storage/' . $book->cover);
+        // garder seulement https
+        if (str_starts_with($coverUrl, 'https://')) $pictures = [$coverUrl];
+    }
+
+    $payload = [
+        'paymentAmount' => (int) $book->price,
+        'reference'     => $reference,
+        'redirectUrl'   => $redirectUrl,
+        'articles' => [[
+            'title'       => (string) $book->title,
+            'description' => $book->description ? Str::limit($book->description, 180) : 'Achat de livre',
+            'pictures'    => $pictures,
+            'price'       => (int) $book->price,
+        ]],
+    ];
+
+    try {
+        $data = $yenga->createPaymentIntent($payload);
+    } catch (\Throwable $e) {
+        // ✅ Ne renvoie plus 500 "muet" côté client
+        return response()->json([
+            'message' => "YengaPay: impossible de créer l'intention de paiement.",
+            'error'   => $e->getMessage(),
+        ], 502);
+    }
+
+    $intentId = $data['paymentIntentId'] ?? $data['id'] ?? null;
+    $checkout = $data['checkoutPageUrlWithPaymentToken'] ?? $data['checkout_url'] ?? null;
+
+    // mapping status
+    $statusRaw = $data['paymentStatus'] ?? $data['transactionStatus'] ?? $data['status'] ?? 'PENDING';
+    $status = strtoupper((string) $statusRaw);
+    $mapped = 'PENDING';
+    if (in_array($status, self::SUCCESS, true)) $mapped = 'SUCCESS';
+    elseif (in_array($status, self::FAILED, true)) $mapped = 'FAILED';
+
+    $payment = Payment::create([
+        'user_id'            => $user->id,
+        'payable_type'       => BookPurchase::class,
+        'payable_id'         => $purchase->id,
+        'provider'           => 'yengapay',
+        'provider_intent_id' => $intentId,
+        'reference'          => $reference,
+        'provider_project_id'=> (string) ($data['projectId'] ?? config('services.yengapay.project_id')),
+        'provider_group_id'  => (string) config('services.yengapay.organization_id'),
+
+        // ✅ client paie les frais -> amount reste prix produit
+        'amount'             => (float) $book->price,
+        'fees'               => (float) ($data['paymentFees'] ?? 0),
+        'currency'           => (string) ($data['currency'] ?? 'XOF'),
+
+        'status'             => $mapped,
+        'token'              => $data['token'] ?? null,
+        'checkout_url'       => $checkout,
+        'provider_payload'   => $data,
+    ]);
+
+    $purchase->payment_id = $payment->id;
+    $purchase->save();
+
+    return response()->json([
+        'checkout_url' => $payment->checkout_url,
+        'reference'    => $payment->reference,
+        'payment_id'   => $payment->id,
+    ], 200);
+}
+
 
     public function return(Request $request, YengaPayService $yenga)
     {

@@ -297,6 +297,7 @@
 async function startBookPayment(bookId) {
     const res = await fetch("{{ route('pay.book') }}", {
         method: "POST",
+        credentials: "same-origin", // ✅ indispensable pour envoyer la session/cookies
         headers: {
             "Content-Type": "application/json",
             "X-CSRF-TOKEN": "{{ csrf_token() }}",
@@ -305,8 +306,28 @@ async function startBookPayment(bookId) {
         body: JSON.stringify({ book_id: parseInt(bookId, 10) }),
     });
 
+    // ✅ parse robuste (parfois Laravel renvoie HTML en prod)
+    const text = await res.text();
     let data = {};
-    try { data = await res.json(); } catch (e) {}
+    try { data = JSON.parse(text); } catch (e) {}
+
+    // ✅ gestion des codes HTTP
+    if (!res.ok) {
+        if (res.status === 401) {
+            // session non reconnue -> login
+            window.location.href = "{{ route('login', ['redirect' => url()->current(), 'autopay' => 1]) }}";
+            return;
+        }
+
+        if (res.status === 419) {
+            alert("Session expirée. Rafraîchis la page puis réessaie.");
+            return;
+        }
+
+        console.error("PAY BOOK ERROR", res.status, text);
+        alert((data.message ?? "Impossible de générer le paiement.") + " (HTTP " + res.status + ")");
+        return;
+    }
 
     if (data.checkout_url) {
         window.location.href = data.checkout_url;
@@ -340,6 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
+
 @endauth
 
 @endsection
