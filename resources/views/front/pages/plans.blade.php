@@ -44,58 +44,61 @@
     {{-- Alert --}}
     <div id="plan-alert" class="hidden mb-8 rounded-2xl border p-4 text-sm"></div>
 
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        @forelse($plans as $plan)
-            <div class="glass rounded-3xl p-7 shadow-lg">
-                <div class="flex items-start justify-between gap-4">
-                    <div>
-                        <h3 class="text-lg font-extrabold text-slate-900">{{ $plan->name }}</h3>
-                        <p class="text-sm text-slate-600 mt-1">
-                            {{ $plan->description ?? 'Accès à tous les livres abonnement.' }}
-                        </p>
+    @if(empty($plans) || $plans->count() === 0)
+        <div class="rounded-3xl border border-slate-200 bg-white p-8 text-center text-slate-600">
+            <div class="text-lg font-bold text-slate-900">Aucun plan disponible</div>
+            <div class="mt-1 text-sm">Ajoute des plans dans la table <code>subscription_plans</code> (seeder).</div>
+        </div>
+    @else
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            @foreach($plans as $plan)
+                <div class="glass rounded-3xl p-7 shadow-lg">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <h3 class="text-lg font-extrabold text-slate-900">{{ $plan->name }}</h3>
+                            <p class="text-sm text-slate-600 mt-1">
+                                {{ $plan->description ?? 'Accès à tous les livres abonnement.' }}
+                            </p>
+                        </div>
+
+                        <span class="px-3 py-1 rounded-xl bg-slate-900 text-white text-xs font-semibold">
+                            {{ (int)$plan->duration_days }} jours
+                        </span>
                     </div>
 
-                    <span class="px-3 py-1 rounded-xl bg-slate-900 text-white text-xs font-semibold">
-                        {{ $plan->duration_days }} jours
-                    </span>
-                </div>
+                    <div class="mt-6 flex items-end justify-between">
+                        <div>
+                            <div class="text-3xl font-extrabold text-slate-900">
+                                {{ number_format((float)$plan->price, 0, ',', ' ') }}
+                            </div>
+                            <div class="text-xs text-slate-500 -mt-1">
+                                {{ $plan->currency ?? 'XOF' }}
+                            </div>
+                        </div>
 
-                <div class="mt-6 flex items-end justify-between">
-                    <div>
-                        <div class="text-3xl font-extrabold text-slate-900">
-                            {{ number_format($plan->price, 0, ',', ' ') }}
-                        </div>
-                        <div class="text-xs text-slate-500 -mt-1">
-                            {{ $plan->currency ?? 'XOF' }}
-                        </div>
+                        @auth
+                            <button
+                                type="button"
+                                class="subscribe-btn px-5 py-3 rounded-2xl text-white font-semibold shadow
+                                       bg-gradient-to-r from-[var(--faso-orange)] to-[var(--faso-green)]"
+                                data-plan-id="{{ $plan->id }}">
+                                S’abonner
+                            </button>
+                        @else
+                            <a href="{{ route('login') }}"
+                               class="px-5 py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
+                                Se connecter
+                            </a>
+                        @endauth
                     </div>
 
-                    @auth
-                        <button
-                            type="button"
-                            class="subscribe-btn px-5 py-3 rounded-2xl text-white font-semibold shadow
-                                   bg-gradient-to-r from-[var(--faso-orange)] to-[var(--faso-green)]"
-                            data-plan-id="{{ $plan->id }}">
-                            S’abonner
-                        </button>
-                    @else
-                        <a href="{{ route('login') }}"
-                           class="px-5 py-3 rounded-2xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700">
-                            Se connecter
-                        </a>
-                    @endauth
+                    <div class="mt-6 text-xs text-slate-500 leading-relaxed">
+                        Le paiement est confirmé automatiquement via webhook.
+                    </div>
                 </div>
-
-                <div class="mt-6 text-xs text-slate-500 leading-relaxed">
-                    Le paiement est confirmé automatiquement via webhook.
-                </div>
-            </div>
-        @empty
-            <div class="col-span-full text-center text-slate-500 py-16">
-                Aucun plan disponible pour le moment.
-            </div>
-        @endforelse
-    </div>
+            @endforeach
+        </div>
+    @endif
 </div>
 
 @auth
@@ -121,6 +124,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const res = await fetch("{{ route('pay.subscription') }}", {
                     method: "POST",
+                    credentials: "same-origin", // ✅ important (session/cookies)
                     headers: {
                         "Content-Type": "application/json",
                         "X-CSRF-TOKEN": "{{ csrf_token() }}",
@@ -129,7 +133,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ plan_id: parseInt(planId, 10) })
                 });
 
-                const data = await res.json();
+                const text = await res.text();
+                let data = {};
+                try { data = JSON.parse(text); } catch (e) {}
+
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        window.location.href = "{{ route('login', ['redirect' => url()->current()]) }}";
+                        return;
+                    }
+                    if (res.status === 419) {
+                        showAlert('error', "Session expirée. Rafraîchis la page puis réessaie.");
+                        return;
+                    }
+                    console.error("SUBSCRIBE ERROR", res.status, text);
+                    showAlert('error', (data.message ?? "Impossible de générer le paiement.") + " (HTTP " + res.status + ")");
+                    return;
+                }
 
                 if (data.checkout_url) {
                     window.location.href = data.checkout_url;
