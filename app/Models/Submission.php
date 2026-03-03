@@ -12,14 +12,27 @@ class Submission extends Model
 
     protected $fillable = [
         'user_id',
+        'category_id',
         'title',
         'description',
         'pdf',
         'status',
+
+        'full_name',
+        'phone_country_code',
+        'phone_number',
+        'address_line',
+        'city',
+        'country',
     ];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(Category::class);
     }
 }

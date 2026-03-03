@@ -9,14 +9,12 @@
         --faso-orange: #E0551B;
         --faso-green: #079C25;
     }
-
     .glass {
         background: rgba(255, 255, 255, 0.65);
         backdrop-filter: blur(14px);
         -webkit-backdrop-filter: blur(14px);
         border: 1px solid rgba(255, 255, 255, 0.4);
     }
-
     .dropzone:hover {
         border-color: var(--faso-orange);
         background: #fff7f3;
@@ -36,7 +34,6 @@
         </p>
     </div>
 
-
     {{-- SUCCESS MESSAGE --}}
     @if(session('success'))
         <div class="mb-8 p-4 bg-green-100 text-green-700 rounded-xl border border-green-200">
@@ -45,41 +42,136 @@
         </div>
     @endif
 
-
-    {{-- FORMULAIRE --}}
+    {{-- FORM --}}
     <form method="POST" action="{{ route('submit.store') }}" enctype="multipart/form-data"
           class="glass shadow-xl rounded-3xl p-10 space-y-8 border border-white/40">
 
         @csrf
 
+        {{-- CATÉGORIE --}}
+        <div class="space-y-1">
+            <label class="text-sm font-semibold text-slate-700">Catégorie du livre</label>
+            <select name="category_id"
+                    class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                           focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                    required>
+                <option value="" disabled {{ old('category_id') ? '' : 'selected' }}>Choisir une catégorie…</option>
+                @foreach($categories as $cat)
+                    <option value="{{ $cat->id }}" {{ (string)old('category_id') === (string)$cat->id ? 'selected' : '' }}>
+                        {{ $cat->name }}
+                    </option>
+                @endforeach
+            </select>
+            @error('category_id')
+                <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+            @enderror
+        </div>
+
         {{-- TITRE --}}
         <div class="space-y-1">
             <label class="text-sm font-semibold text-slate-700">Titre du manuscrit</label>
-            <input type="text"
-                   name="title"
-                   class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
-                   value="{{ old('title') }}"
-                   required>
+            <input type="text" name="title"
+                   class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                          focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                   value="{{ old('title') }}" required>
             @error('title')
                 <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
             @enderror
         </div>
 
-
         {{-- DESCRIPTION --}}
         <div class="space-y-1">
             <label class="text-sm font-semibold text-slate-700">Résumé / Description</label>
-            <textarea name="description"
-                      rows="4"
-                      class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+            <textarea name="description" rows="4"
+                      class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                             focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
                       required>{{ old('description') }}</textarea>
             @error('description')
                 <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
             @enderror
         </div>
 
+        {{-- CONTACT --}}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-        {{-- FILE UPLOAD (DROPZONE PREMIUM) --}}
+            <div class="space-y-1 md:col-span-2">
+                <label class="text-sm font-semibold text-slate-700">Nom complet (optionnel)</label>
+                <input type="text" name="full_name"
+                       class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                              focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                       value="{{ old('full_name') }}"
+                       placeholder="Ex: Ouedraogo Issa">
+                @error('full_name')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-sm font-semibold text-slate-700">Indicatif pays</label>
+                <input type="text" name="phone_country_code"
+                       class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                              focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                       value="{{ old('phone_country_code', '+226') }}"
+                       placeholder="+226" required>
+                @error('phone_country_code')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-sm font-semibold text-slate-700">Téléphone</label>
+                <input type="text" name="phone_number"
+                       class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                              focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                       value="{{ old('phone_number') }}"
+                       placeholder="70123456" required>
+                @error('phone_number')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+        </div>
+
+        {{-- ADRESSE --}}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div class="space-y-1 md:col-span-3">
+                <label class="text-sm font-semibold text-slate-700">Adresse</label>
+                <input type="text" name="address_line"
+                       class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                              focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                       value="{{ old('address_line') }}"
+                       placeholder="Quartier, rue, porte..." required>
+                @error('address_line')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="space-y-1">
+                <label class="text-sm font-semibold text-slate-700">Ville</label>
+                <input type="text" name="city"
+                       class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                              focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                       value="{{ old('city') }}"
+                       placeholder="Ouagadougou" required>
+                @error('city')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+
+            <div class="space-y-1 md:col-span-2">
+                <label class="text-sm font-semibold text-slate-700">Pays</label>
+                <input type="text" name="country"
+                       class="w-full mt-1 px-4 py-3 rounded-xl border border-slate-300 text-sm shadow-sm
+                              focus:ring-2 focus:ring-[var(--faso-orange)] focus:border-transparent"
+                       value="{{ old('country', 'Burkina Faso') }}"
+                       required>
+                @error('country')
+                    <p class="text-red-500 text-xs mt-1">{{ $message }}</p>
+                @enderror
+            </div>
+        </div>
+
+        {{-- FILE UPLOAD --}}
         <div class="space-y-2">
             <label class="text-sm font-semibold text-slate-700">Manuscrit (PDF uniquement)</label>
 
@@ -109,7 +201,6 @@
                 <p class="text-red-500 text-xs">{{ $message }}</p>
             @enderror
         </div>
-
 
         {{-- CTA SUBMIT --}}
         <button type="submit"
