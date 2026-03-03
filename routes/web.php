@@ -28,7 +28,7 @@ use App\Http\Controllers\Admin\DashboardController;
 | HOME
 |--------------------------------------------------------------------------
 */
-Route::get('/', fn() => view('front.pages.home'))->name('home');
+Route::get('/', fn () => view('front.pages.home'))->name('home');
 
 /*
 |--------------------------------------------------------------------------
@@ -66,11 +66,6 @@ Route::get('/search/ajax', [SearchController::class, 'ajax'])->name('search.ajax
 |--------------------------------------------------------------------------
 | PAIEMENTS & ABONNEMENTS
 |--------------------------------------------------------------------------
-| - /plans = API JSON des plans
-| - /abonnement = page UI plans
-| - /pay/book = paiement livre
-| - /pay/subscription = paiement abonnement
-| - /webhooks/yengapay = webhook
 */
 Route::get('/plans', [SubscriptionController::class, 'plans'])->name('plans.index');
 Route::get('/abonnement', [SubscriptionController::class, 'plansPage'])->name('plans.page');
@@ -81,13 +76,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/payment/return', [PaymentController::class, 'return'])->name('payment.return');
 });
 
-// webhook
+// Webhook YengaPay (PAS auth)
 Route::post('/webhooks/yengapay', [YengaPayWebhookController::class, 'handle'])
     ->name('webhooks.yengapay');
 
 /*
 |--------------------------------------------------------------------------
-| LECTURE + PROGRESSION + FAVORIS (auth)
+| LECTURE + PROGRESSION + FAVORIS
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'book.access'])->group(function () {
@@ -117,8 +112,8 @@ Route::middleware('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth')->prefix('account')->name('account.')->group(function () {
-    Route::get('/', fn() => view('front.account.index'))->name('index');
-    Route::get('/books', fn() => view('front.account.books'))->name('books');
+    Route::get('/', fn () => view('front.account.index'))->name('index');
+    Route::get('/books', fn () => view('front.account.books'))->name('books');
 });
 
 /*
@@ -134,30 +129,39 @@ Route::middleware('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| 🛠️ ADMIN PANEL
+| 🛠️ ADMIN PANEL (guard admin)
 |--------------------------------------------------------------------------
 */
 Route::prefix('admin')->name('admin.')->group(function () {
 
+    // ✅ /admin => redirect dashboard
+    Route::get('/', fn () => redirect()->route('admin.dashboard'))->name('home');
+
+    // ✅ Auth admin (guest)
     Route::middleware('guest:admin')->group(function () {
         Route::get('/login', [AdminAuthController::class, 'showLoginForm'])->name('login');
         Route::post('/login', [AdminAuthController::class, 'login'])->name('login.submit');
     });
 
+    // ✅ logout admin
     Route::post('/logout', [AdminAuthController::class, 'logout'])
         ->middleware('auth:admin')
         ->name('logout');
 
+    // ✅ Routes protégées admin
     Route::middleware('auth:admin')->group(function () {
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
         Route::resource('categories', CategoryController::class);
         Route::resource('authors', AuthorController::class);
         Route::resource('books', BookController::class);
+
+        // ✅ Soumissions + download PDF
+        Route::get('submissions/{submission}/download', [SubmissionController::class, 'download'])
+            ->name('submissions.download');
+
         Route::resource('submissions', SubmissionController::class);
     });
-
-    Route::get('/', fn() => redirect()->route('admin.dashboard'));
 });
 
 /*
