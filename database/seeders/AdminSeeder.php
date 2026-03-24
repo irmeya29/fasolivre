@@ -1,5 +1,4 @@
 <?php
-
 namespace Database\Seeders;
 
 use App\Models\Admin;
@@ -10,10 +9,20 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        Admin::create([
-            'name' => 'Super Admin',
-            'email' => 'admin@fasolivre.com',
-            'password' => Hash::make('password123'),
-        ]);
+        Admin::updateOrCreate(
+            ['email' => 'admin@fasolivre.com'],
+            [
+                'name' => 'Super Admin',
+                'password' => Hash::make('password123'),
+            ]
+        );
+
+        Admin::updateOrCreate(
+            ['email' => 'edito@fasolivre.com'],
+            [
+                'name' => 'Editor',
+                'password' => Hash::make('password456'),
+            ]
+        );
     }
 }
